@@ -1,6 +1,10 @@
+from glob import glob
 from config import Config
-def init_logger(log_file=Config.save_dir + 'train.log'):
+def init_logger(log_file='log_output.log'):
     from logging import getLogger, INFO, FileHandler,  Formatter,  StreamHandler
+    
+    
+    
     logger = getLogger(__name__)
     logger.setLevel(INFO)
     

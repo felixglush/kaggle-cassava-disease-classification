@@ -1,3 +1,4 @@
+from config import Config
 def init_logger(log_file=Config.save_dir + 'train.log'):
     from logging import getLogger, INFO, FileHandler,  Formatter,  StreamHandler
     logger = getLogger(__name__)

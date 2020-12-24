@@ -540,3 +540,360 @@ Accuracy: 0.5
 
 ========== Running inference ==========
 
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running inference ==========
+
+
+========== Running training ==========
+
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.6400002241134644 | grad: 1310102.6308484464
+[VAL] batch 1/1 loss: 0.7768244743347168
+
+Epoch training summary:
+ Fold 0/10 | Epoch: 1/1 | Epoch time: 11.566084384918213 sec | Training loss: 1.5994737148284912 | Validation loss: 1.5536489486694336 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 0, and accuracy score 0.500
+========== fold: 0 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.612051010131836 | grad: 1341277.0123642974
+[VAL] batch 1/1 loss: 0.7367516160011292
+
+Epoch training summary:
+ Fold 1/10 | Epoch: 1/1 | Epoch time: 5.919016361236572 sec | Training loss: 1.5651080012321472 | Validation loss: 1.4735032320022583 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 1, and accuracy score 0.500
+========== fold: 1 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5125036239624023 | grad: 1344945.0763842303
+[VAL] batch 1/1 loss: 0.7296926975250244
+
+Epoch training summary:
+ Fold 2/10 | Epoch: 1/1 | Epoch time: 5.923725366592407 sec | Training loss: 1.5306013723214467 | Validation loss: 1.4593853950500488 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 2, and accuracy score 0.550
+========== fold: 2 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.513801097869873 | grad: 1388178.9657478074
+[VAL] batch 1/1 loss: 0.7077823877334595
+
+Epoch training summary:
+ Fold 3/10 | Epoch: 1/1 | Epoch time: 5.945009469985962 sec | Training loss: 1.4994529287020366 | Validation loss: 1.415564775466919 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 3, and accuracy score 0.550
+========== fold: 3 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4508602619171143 | grad: 1384111.3035923643
+[VAL] batch 1/1 loss: 0.7199181318283081
+
+Epoch training summary:
+ Fold 4/10 | Epoch: 1/1 | Epoch time: 5.943278551101685 sec | Training loss: 1.4589785635471344 | Validation loss: 1.4398362636566162 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 4, and accuracy score 0.500
+========== fold: 4 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4483243227005005 | grad: 1289697.9463210641
+[VAL] batch 1/1 loss: 0.6832646131515503
+
+Epoch training summary:
+ Fold 5/10 | Epoch: 1/1 | Epoch time: 5.909700632095337 sec | Training loss: 1.4454583823680878 | Validation loss: 1.3665292263031006 | Accuracy: 0.6
+
+Saved model on epoch 1, fold 5, and accuracy score 0.600
+========== fold: 5 result ==========
+Accuracy: 0.6
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5194182395935059 | grad: 1415320.5462051677
+[VAL] batch 1/1 loss: 0.6747218370437622
+
+Epoch training summary:
+ Fold 6/10 | Epoch: 1/1 | Epoch time: 5.963574171066284 sec | Training loss: 1.4323385953903198 | Validation loss: 1.3494436740875244 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 6, and accuracy score 0.550
+========== fold: 6 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.474919319152832 | grad: 1464507.7552286808
+[VAL] batch 1/1 loss: 0.6938003897666931
+
+Epoch training summary:
+ Fold 7/10 | Epoch: 1/1 | Epoch time: 5.940648555755615 sec | Training loss: 1.4068441092967987 | Validation loss: 1.3876007795333862 | Accuracy: 0.45
+
+Saved model on epoch 1, fold 7, and accuracy score 0.450
+========== fold: 7 result ==========
+Accuracy: 0.45
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.527364730834961 | grad: nan
+[VAL] batch 1/1 loss: 0.6858540773391724
+
+Epoch training summary:
+ Fold 8/10 | Epoch: 1/1 | Epoch time: 5.911736011505127 sec | Training loss: 1.4158776203791301 | Validation loss: 1.3717081546783447 | Accuracy: 0.45
+
+Saved model on epoch 1, fold 8, and accuracy score 0.450
+========== fold: 8 result ==========
+Accuracy: 0.45
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.50300931930542 | grad: 1395075.125440632
+[VAL] batch 1/1 loss: 0.6850408911705017
+
+Epoch training summary:
+ Fold 9/10 | Epoch: 1/1 | Epoch time: 5.965385437011719 sec | Training loss: 1.4102772076924641 | Validation loss: 1.3700817823410034 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 9, and accuracy score 0.500
+========== fold: 9 result ==========
+Accuracy: 0.5
+========== CV ==========
+{0: 0.5, 1: 0.5, 2: 0.55, 3: 0.55, 4: 0.5, 5: 0.6, 6: 0.55, 7: 0.45, 8: 0.45, 9: 0.5}
+
+========== Running inference ==========
+
+
+========== Running training ==========
+
+Training epoch 1/1
+
+========== Running training ==========
+
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.6400134563446045 | grad: 19.99043467467927
+[VAL] batch 1/1 loss: 0.7768176198005676
+
+Epoch training summary:
+ Fold 0/10 | Epoch: 1/1 | Epoch time: 11.63466215133667 sec | Training loss: 1.5994621117909749 | Validation loss: 1.5536352396011353 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 0, and accuracy score 0.500
+========== fold: 0 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.6120001077651978 | grad: 20.45458138805406
+[VAL] batch 1/1 loss: 0.7367425560951233
+
+Epoch training summary:
+ Fold 1/10 | Epoch: 1/1 | Epoch time: 6.023481130599976 sec | Training loss: 1.5651138126850128 | Validation loss: 1.4734851121902466 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 1, and accuracy score 0.500
+========== fold: 1 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5125337839126587 | grad: 20.53078908891156
+[VAL] batch 1/1 loss: 0.7296876907348633
+
+Epoch training summary:
+ Fold 2/10 | Epoch: 1/1 | Epoch time: 5.862990617752075 sec | Training loss: 1.5305989384651184 | Validation loss: 1.4593753814697266 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 2, and accuracy score 0.550
+========== fold: 2 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5136826038360596 | grad: 21.183753070398836
+[VAL] batch 1/1 loss: 0.7078777551651001
+
+Epoch training summary:
+ Fold 3/10 | Epoch: 1/1 | Epoch time: 5.8813276290893555 sec | Training loss: 1.499418447415034 | Validation loss: 1.4157555103302002 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 3, and accuracy score 0.550
+========== fold: 3 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4511724710464478 | grad: 21.100885186994393
+[VAL] batch 1/1 loss: 0.7198085188865662
+
+Epoch training summary:
+ Fold 4/10 | Epoch: 1/1 | Epoch time: 5.921815395355225 sec | Training loss: 1.4589901566505432 | Validation loss: 1.4396170377731323 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 4, and accuracy score 0.500
+========== fold: 4 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4479262828826904 | grad: 19.70170442049755
+[VAL] batch 1/1 loss: 0.6831401586532593
+
+Epoch training summary:
+ Fold 5/10 | Epoch: 1/1 | Epoch time: 5.8770527839660645 sec | Training loss: 1.4454969863096874 | Validation loss: 1.3662803173065186 | Accuracy: 0.6
+
+Saved model on epoch 1, fold 5, and accuracy score 0.600
+========== fold: 5 result ==========
+Accuracy: 0.6
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5198484659194946 | grad: 21.655307421572083
+[VAL] batch 1/1 loss: 0.6747432947158813
+
+Epoch training summary:
+ Fold 6/10 | Epoch: 1/1 | Epoch time: 5.924354553222656 sec | Training loss: 1.432303826014201 | Validation loss: 1.3494865894317627 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 6, and accuracy score 0.550
+========== fold: 6 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+
+========== Running training ==========
+
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.6400336027145386 | grad: 19.990254066728475
+[VAL] batch 1/1 loss: 0.7768231630325317
+
+Epoch training summary:
+ Fold 0/10 | Epoch: 1/1 | Epoch time: 11.722501039505005 sec | Training loss: 1.599463790655136 | Validation loss: 1.5536463260650635 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 0, and accuracy score 0.500
+========== fold: 0 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.6120938062667847 | grad: 20.463135741211413
+[VAL] batch 1/1 loss: 0.7367646098136902
+
+Epoch training summary:
+ Fold 1/10 | Epoch: 1/1 | Epoch time: 6.049360036849976 sec | Training loss: 1.565122236808141 | Validation loss: 1.4735292196273804 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 1, and accuracy score 0.500
+========== fold: 1 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5124988555908203 | grad: 20.543018894595427
+[VAL] batch 1/1 loss: 0.7297165989875793
+
+Epoch training summary:
+ Fold 2/10 | Epoch: 1/1 | Epoch time: 5.983821392059326 sec | Training loss: 1.5306837757428486 | Validation loss: 1.4594331979751587 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 2, and accuracy score 0.550
+========== fold: 2 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5140025615692139 | grad: 21.183543314813306
+[VAL] batch 1/1 loss: 0.7080023288726807
+
+Epoch training summary:
+ Fold 3/10 | Epoch: 1/1 | Epoch time: 6.130179166793823 sec | Training loss: 1.4995786845684052 | Validation loss: 1.4160046577453613 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 3, and accuracy score 0.550
+========== fold: 3 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4524049758911133 | grad: 21.118390877768274
+[VAL] batch 1/1 loss: 0.7200082540512085
+
+Epoch training summary:
+ Fold 4/10 | Epoch: 1/1 | Epoch time: 6.073033332824707 sec | Training loss: 1.4593353867530823 | Validation loss: 1.440016508102417 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 4, and accuracy score 0.500
+========== fold: 4 result ==========
+Accuracy: 0.5
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.4483799934387207 | grad: 19.6953811132839
+[VAL] batch 1/1 loss: 0.6834275126457214
+
+Epoch training summary:
+ Fold 5/10 | Epoch: 1/1 | Epoch time: 6.056473016738892 sec | Training loss: 1.4458036720752716 | Validation loss: 1.3668550252914429 | Accuracy: 0.6
+
+Saved model on epoch 1, fold 5, and accuracy score 0.600
+========== fold: 5 result ==========
+Accuracy: 0.6
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5205312967300415 | grad: 21.6658457239089
+[VAL] batch 1/1 loss: 0.6749083995819092
+
+Epoch training summary:
+ Fold 6/10 | Epoch: 1/1 | Epoch time: 6.0392005443573 sec | Training loss: 1.4326393405596416 | Validation loss: 1.3498167991638184 | Accuracy: 0.55
+
+Saved model on epoch 1, fold 6, and accuracy score 0.550
+========== fold: 6 result ==========
+Accuracy: 0.55
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.47467839717865 | grad: 22.31662966850803
+[VAL] batch 1/1 loss: 0.6942952871322632
+
+Epoch training summary:
+ Fold 7/10 | Epoch: 1/1 | Epoch time: 6.082669973373413 sec | Training loss: 1.4074336886405945 | Validation loss: 1.3885905742645264 | Accuracy: 0.45
+
+Saved model on epoch 1, fold 7, and accuracy score 0.450
+========== fold: 7 result ==========
+Accuracy: 0.45
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.52540922164917 | grad: 19.935283491345416
+[VAL] batch 1/1 loss: 0.6830537915229797
+
+Epoch training summary:
+ Fold 8/10 | Epoch: 1/1 | Epoch time: 6.063217401504517 sec | Training loss: 1.415996899207433 | Validation loss: 1.3661075830459595 | Accuracy: 0.45
+
+Saved model on epoch 1, fold 8, and accuracy score 0.450
+========== fold: 8 result ==========
+Accuracy: 0.45
+Training epoch 1/1
+[TRAIN] batch 12/12 loss: 1.5015721321105957 | grad: 21.17114534735831
+[VAL] batch 1/1 loss: 0.6831393837928772
+
+Epoch training summary:
+ Fold 9/10 | Epoch: 1/1 | Epoch time: 6.0901124477386475 sec | Training loss: 1.4071768422921498 | Validation loss: 1.3662787675857544 | Accuracy: 0.5
+
+Saved model on epoch 1, fold 9, and accuracy score 0.500
+========== fold: 9 result ==========
+Accuracy: 0.5
+========== CV ==========
+{0: 0.5, 1: 0.5, 2: 0.55, 3: 0.55, 4: 0.5, 5: 0.6, 6: 0.55, 7: 0.45, 8: 0.45, 9: 0.5}
+
+========== Running inference ==========
+

@@ -1,9 +1,10 @@
-from glob import glob
+from logging import getLogger, INFO, FileHandler,  Formatter,  StreamHandler
 from config import Config
-def init_logger(log_file='log_output.log'):
-    from logging import getLogger, INFO, FileHandler,  Formatter,  StreamHandler
+from datetime import datetime
     
-    
+def init_logger():    
+    now = datetime.now()
+    log_file = './logs/' + now.strftime("%d-%m-%Y_%H:%M:%S.log")
     
     logger = getLogger(__name__)
     logger.setLevel(INFO)

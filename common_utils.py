@@ -96,21 +96,23 @@ def setup(model_arch, lr, is_amsgrad, num_labels, device):
     
     return model, optimizer, scheduler, criterion
 
-def get_loaders(df, fold, train_batchsize, data_root_dir):    
-        train_idx = df[df['fold'] != fold].index  
-        valid_idx = df[df['fold'] == fold].index 
-        train_df = df.iloc[train_idx].reset_index(drop=True) # since we are selecting rows, the index will be missing #s so reset
-        valid_df = df.iloc[valid_idx].reset_index(drop=True)
+def get_data_dfs(df, fold):
+    train_idx = df[df['fold'] != fold].index  
+    valid_idx = df[df['fold'] == fold].index 
+    train_df = df.iloc[train_idx].reset_index(drop=True) # since we are selecting rows, the index will be missing #s so reset
+    valid_df = df.iloc[valid_idx].reset_index(drop=True)
+    return train_df, valid_df
 
-        train_dataset = CassavaDataset(train_df, data_root_dir, output_label=True,
-                                       transform=get_train_transforms(Config.img_size))
-        valid_dataset = CassavaDataset(valid_df, data_root_dir, output_label=True, 
-                                       transform=get_valid_transforms(Config.img_size))
+def get_loaders(train_df, valid_df, train_batchsize, data_root_dir):        
+    train_dataset = CassavaDataset(train_df, data_root_dir, output_label=True,
+                                   transform=get_train_transforms(Config.img_size))
+    valid_dataset = CassavaDataset(valid_df, data_root_dir, output_label=True, 
+                                   transform=get_valid_transforms(Config.img_size))
 
-        train_dataloader = DataLoader(train_dataset, batch_size=train_batchsize, 
-                                      pin_memory=True, shuffle=True, 
-                                      num_workers=Config.num_workers)
-        valid_dataloader = DataLoader(valid_dataset, batch_size=Config.valid_bs, 
-                                      pin_memory=True, shuffle=True, 
-                                      num_workers=Config.num_workers)
-        return train_dataloader, valid_dataloader
+    train_dataloader = DataLoader(train_dataset, batch_size=train_batchsize, 
+                                  pin_memory=True, shuffle=False, 
+                                  num_workers=Config.num_workers)
+    valid_dataloader = DataLoader(valid_dataset, batch_size=Config.valid_bs, 
+                                  pin_memory=True, shuffle=False, 
+                                  num_workers=Config.num_workers)
+    return train_dataloader, valid_dataloader

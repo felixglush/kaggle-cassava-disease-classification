@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from torch.cuda.amp import autocast
 from config import Config
+import gc 
+
 # for each sample in this batch, take the maximum predicted class
 def process_model_output(predictions, output, batch_size):
     predicted_class_per_sample = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
@@ -12,8 +14,7 @@ def process_model_output(predictions, output, batch_size):
 # loops over data with gradient scaling and accumulation
 def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accum_iter, logger, device):
     model.train()
-    batch_losses = []
-
+    running_loss = 0.0 # for this epoch, across all batches
     for batch_idx, (images, labels) in enumerate(dataloader):
         images = images.to(device)
         labels = labels.to(device)
@@ -21,7 +22,7 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
             predictions = model(images)
             loss = criterion(predictions, labels)
         
-        batch_losses.append(loss.item())
+        running_loss += loss.detach().item()
 
         # Scales loss.  Calls backward() on scaled loss to create scaled gradients.
         # Backward passes under autocast are not recommended.
@@ -58,12 +59,13 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
                 
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
             logger.info(f'[TRAIN] batch {batch_idx+1}/{len(dataloader)} loss: {loss} | grad: {total_norm}')
-
-    return batch_losses
+        gc.collect()
+        
+    return running_loss / len(dataloader)
 
 def valid_epoch(dataloader, model, criterion, accum_iter, logger, device):
     model.eval()
-    batch_losses = []
+    running_loss = 0.0 # for this epoch, across all batches
     predictions = np.array([])
     for batch_idx, (images, labels) in enumerate(dataloader):
         images = images.to(device)
@@ -74,14 +76,16 @@ def valid_epoch(dataloader, model, criterion, accum_iter, logger, device):
             # output: [batch_size, # classes] -> [batch_size, 5]
         loss = criterion(output, labels)
         
-        batch_losses.append(loss)
+        running_loss += loss.detach().item()
+
         # for each sample in this batch, take the maximum predicted class
         predictions = process_model_output(predictions, output, batch_size=images.size(0))
         
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
             logger.info(f'[VAL] batch {batch_idx+1}/{len(dataloader)} loss: {loss / accum_iter}')
+        gc.collect()
         
-    return batch_losses, predictions
+    return running_loss / len(dataloader), predictions
     
 def inference(model, dataloader, device):
     model.eval()

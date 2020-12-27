@@ -1,4 +1,6 @@
 from torch.utils.data import Dataset
+import torch
+import numpy as np
 import cv2
 class CassavaDataset(Dataset):
     def __init__(self, df, data_root_dir, transform=None, output_label=False):
@@ -24,6 +26,6 @@ class CassavaDataset(Dataset):
              img = self.transform(image=img)['image']
                 
         if self.output_label == True:
-            return img, self.labels[idx]
+            return img, torch.tensor(self.labels[idx].astype(np.int))
         else:
             return img

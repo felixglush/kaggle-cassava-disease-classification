@@ -6,9 +6,9 @@ import gc
 
 # for each sample in this batch, take the maximum predicted class
 def process_model_output(predictions, output, batch_size):
-    predicted_class_per_sample = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
-    assert predicted_class_per_sample.shape == (1, batch_size) 
-    predictions = np.concatenate((predictions, predicted_class_per_sample), axis=None)
+    batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()]) # sample preds for the batch
+    assert batch_sample_preds.shape == (1, batch_size) 
+    predictions = np.concatenate((predictions, batch_sample_preds), axis=None)
     return predictions
 
 # loops over data with gradient scaling and accumulation
@@ -20,6 +20,7 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
         labels = labels.to(device)
         with autocast():
             predictions = model(images)
+            assert len(predictions) == len(images) == len(labels)
             loss = criterion(predictions, labels)
         loss = loss / accum_iter
 
@@ -61,7 +62,7 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
             if scheduler: scheduler.step()
                 
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
-            logger.info(f'[TRAIN] batch {batch_idx+1}/{len(dataloader)} loss: {loss} | grad: {total_norm}')
+            logger.info(f'[TRAIN] batch {batch_idx+1}/{len(dataloader)} loss: {running_loss / (batch_idx+1)} | grad: {total_norm}')
         gc.collect()
         
     return running_loss / len(dataloader)
@@ -85,24 +86,35 @@ def valid_epoch(dataloader, model, criterion, logger, device):
         predictions = process_model_output(predictions, output, batch_size=images.size(0))
         
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
-            logger.info(f'[VAL] batch {batch_idx+1}/{len(dataloader)} loss: {running_loss / batch_idx}')
+            logger.info(f'[VAL] batch {batch_idx+1}/{len(dataloader)} loss: {running_loss / (batch_idx+1)}')
         gc.collect()
         
     return running_loss / len(dataloader), predictions
-    
-def inference(model, dataloader, device):
-    model.eval()
-    predictions = np.array([])
-    #targets = np.array([])
-    for batch_idx, (images, labels) in enumerate(dataloader):
-        images = images.to(device)
-        
-        with torch.no_grad():
-            output = model(images)
-        
-        # for each sample in this batch, take the maximum predicted class
-        predictions = process_model_output(predictions, output, batch_size=images.size(0))
-        
-        #targets  = np.concatenate((targets, labels), axis=None)
-    
-    return predictions
+
+# runs inference on all trained models, averages result   
+def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device):
+    predictions = np.zeros(num_samples)
+    for s in states:
+        model = Model(model_arch, num_labels, False, 0, pretrained=True).to(device)
+        model.load_state_dict(s)
+        model.eval()
+       
+        start = 0
+        for batch_idx, (images, labels) in enumerate(dataloader):
+            end = start + len(images)
+            
+            images = images.to(device)
+
+            with torch.no_grad():
+                output = model(images)
+            
+            batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
+            predictions[start:end] = batch_sample_preds
+            start = end
+            
+        del model
+        gc.collect()
+    print(np.max(predictions), np.min(predictions))
+    averaged = np.round(predictions / (num_labels - 1), decimals=0)
+    print(np.max(averaged), np.min(averaged))
+    return averaged

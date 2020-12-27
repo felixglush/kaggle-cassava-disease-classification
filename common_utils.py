@@ -40,15 +40,15 @@ def read_csvs(data_dir, debug, num_samples=None, test_proportion=None):
         n = num_samples if num_samples else 200
         train_df = train_df.sample(n=n, random_state=Config.seed).reset_index(drop=True)
     
-    test_hold_out_df = None
+    holdout_df = None
     if test_proportion:
-        train_df, test_hold_out_df = train_test_split(train_df, test_size=test_proportion)
+        train_df, holdout_df = train_test_split(train_df, test_size=test_proportion)
         train_df = train_df.reset_index(drop=True)
-        test_hold_out_df = test_hold_out_df.reset_index(drop=True)
+        holdout_df = holdout_df.reset_index(drop=True)
     
     sample_df = pd.read_csv(data_dir + '/sample_submission.csv', engine='python')    
         
-    return train_df, sample_df, test_hold_out_df
+    return train_df, sample_df, holdout_df
 
 def stratify_split(df, splits, seed, target_col):
     train_folds = df.copy()
@@ -87,18 +87,7 @@ def get_valid_transforms(image_size):
             ToTensorV2(p=1.0),
         ], p=1.)
 
-def setup(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, device, checkpoint=None):
-     # -------- MODEL INSTANTIATION --------
-    model = Model(model_arch, num_labels, fc_layer["middle_fc"], fc_layer["middle_fc_size"], pretrained=True).to(device)
-    
-    # -------- OPTIMIZER -------- try AdamW?
-    optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
-
-    if checkpoint:
-        checkpoint_config = torch.load(checkpoint)
-        model.load_state_dict(checkpoint_config['model_state'])
-        optimizer.load_state_dict(checkpoint_config['optimizer_state'])
-    
+def get_schd_crit(optimizer):
     # -------- SCHEDULER --------
     scheduler = None
     if Config.scheduler == 'ReduceLROnPlateau':
@@ -110,9 +99,23 @@ def setup(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, device
     
     # -------- LOSS FUNCTION --------
     criterion = torch.nn.CrossEntropyLoss()
-    
-    return model, optimizer, scheduler, criterion
+    return scheduler, criterion
 
+def setup_model_optimizer(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, device, checkpoint=None):
+     # -------- MODEL INSTANTIATION --------
+    model = Model(model_arch, num_labels, fc_layer["middle_fc"], fc_layer["middle_fc_size"], pretrained=True).to(device)
+    
+    # -------- OPTIMIZER -------- try AdamW?
+    optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
+
+    if checkpoint:
+        checkpoint_config = torch.load(checkpoint)
+        model.load_state_dict(checkpoint_config['model_state'])
+        optimizer.load_state_dict(checkpoint_config['optimizer_state'])
+    
+    return model, optimizer
+
+# df: stratified 
 def get_data_dfs(df, fold):
     train_idx = df[df['fold'] != fold].index  
     valid_idx = df[df['fold'] == fold].index 
@@ -120,16 +123,27 @@ def get_data_dfs(df, fold):
     valid_df = df.iloc[valid_idx].reset_index(drop=True)
     return train_df, valid_df
 
+# called for each fold
 def get_loaders(train_df, valid_df, train_batchsize, data_root_dir):        
     train_dataset = CassavaDataset(train_df, data_root_dir, output_label=True,
                                    transform=get_train_transforms(Config.img_size))
     valid_dataset = CassavaDataset(valid_df, data_root_dir, output_label=True, 
                                    transform=get_valid_transforms(Config.img_size))
-
+    
     train_dataloader = DataLoader(train_dataset, batch_size=train_batchsize, 
                                   pin_memory=True, shuffle=False, 
                                   num_workers=Config.num_workers)
     valid_dataloader = DataLoader(valid_dataset, batch_size=Config.valid_bs, 
                                   pin_memory=True, shuffle=False, 
                                   num_workers=Config.num_workers)
+    
     return train_dataloader, valid_dataloader
+
+# called before any folds are trained
+def create_holdout_loader(df, data_root_dir):        
+    dataset = CassavaDataset(df, data_root_dir, output_label=True, transform=get_valid_transforms(Config.img_size))
+    dataloader = DataLoader(dataset, batch_size=Config.valid_bs, 
+                            pin_memory=True, shuffle=False, 
+                            num_workers=Config.num_workers)
+    targets = df.label.values
+    return dataloader, targets

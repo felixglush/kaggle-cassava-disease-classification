@@ -21,14 +21,16 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
         with autocast():
             predictions = model(images)
             loss = criterion(predictions, labels)
-        
-        running_loss += loss.detach().item()
+        loss = loss / accum_iter
 
         # Scales loss.  Calls backward() on scaled loss to create scaled gradients.
         # Backward passes under autocast are not recommended.
         # Backward ops run in the same dtype autocast chose for corresponding forward ops.
         # See https://pytorch.org/docs/stable/amp.html#gradient-scaling for why scaling is helpful
         scaler.scale(loss).backward()
+        
+        running_loss += loss.detach().item()
+
         total_norm = 0.
         
         if batch_idx + 1 % accum_iter == 0 or batch_idx + 1 == len(dataloader):
@@ -56,6 +58,7 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
             # Updates the scale for next iteration.
             scaler.update()
             optimizer.zero_grad()
+            if scheduler: scheduler.step()
                 
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
             logger.info(f'[TRAIN] batch {batch_idx+1}/{len(dataloader)} loss: {loss} | grad: {total_norm}')
@@ -63,7 +66,7 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
         
     return running_loss / len(dataloader)
 
-def valid_epoch(dataloader, model, criterion, accum_iter, logger, device):
+def valid_epoch(dataloader, model, criterion, logger, device):
     model.eval()
     running_loss = 0.0 # for this epoch, across all batches
     predictions = np.array([])
@@ -82,7 +85,7 @@ def valid_epoch(dataloader, model, criterion, accum_iter, logger, device):
         predictions = process_model_output(predictions, output, batch_size=images.size(0))
         
         if batch_idx + 1 % Config.print_every == 0 or batch_idx + 1 == len(dataloader):
-            logger.info(f'[VAL] batch {batch_idx+1}/{len(dataloader)} loss: {loss / accum_iter}')
+            logger.info(f'[VAL] batch {batch_idx+1}/{len(dataloader)} loss: {running_loss / batch_idx}')
         gc.collect()
         
     return running_loss / len(dataloader), predictions

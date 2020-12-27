@@ -5,6 +5,7 @@ import pandas as pd
 import cv2
 import torch
 from sklearn.model_selection import StratifiedKFold
+from torch.utils.data import random_split
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR, ReduceLROnPlateau
 from torch.optim import Adam
 from torch.utils.data import Dataset, DataLoader
@@ -16,9 +17,11 @@ from albumentations import (
     IAASharpen, IAAEmboss, RandomBrightnessContrast, Flip, OneOf, Compose, Normalize, Cutout, CoarseDropout, ShiftScaleRotate, CenterCrop, Resize
 )
 from albumentations.pytorch import ToTensorV2
+import torch
 from config import Config
 from cassava_dataset import CassavaDataset
 from model import Model
+from sklearn.model_selection import train_test_split
 
 def set_seeds(seed):
     random.seed(seed)
@@ -29,14 +32,23 @@ def set_seeds(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = True
 
-def read_csvs(data_dir, debug):
-    train = pd.read_csv(data_dir + '/train.csv', engine='python')
-    test = pd.read_csv(data_dir + '/sample_submission.csv', engine='python')
-
-    if debug:
-        train = train.sample(n=200, random_state=Config.seed).reset_index(drop=True)
+# Reads the train.csv file and creates a dataframe out of it, optionally separating a test set that won't be used
+# in any stratified cross validation or training
+def read_csvs(data_dir, debug, num_samples=None, test_proportion=None):
+    train_df = pd.read_csv(data_dir + '/train.csv', engine='python')
+    if debug or num_samples:
+        n = num_samples if num_samples else 200
+        train_df = train_df.sample(n=n, random_state=Config.seed).reset_index(drop=True)
+    
+    test_hold_out_df = None
+    if test_proportion:
+        train_df, test_hold_out_df = train_test_split(train_df, test_size=test_proportion)
+        train_df = train_df.reset_index(drop=True)
+        test_hold_out_df = test_hold_out_df.reset_index(drop=True)
+    
+    sample_df = pd.read_csv(data_dir + '/sample_submission.csv', engine='python')    
         
-    return train, test
+    return train_df, sample_df, test_hold_out_df
 
 def stratify_split(df, splits, seed, target_col):
     train_folds = df.copy()
@@ -75,13 +87,18 @@ def get_valid_transforms(image_size):
             ToTensorV2(p=1.0),
         ], p=1.)
 
-def setup(model_arch, lr, is_amsgrad, num_labels, device):
+def setup(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, device, checkpoint=None):
      # -------- MODEL INSTANTIATION --------
-    model = Model(model_arch, num_labels, pretrained=True).to(device)
+    model = Model(model_arch, num_labels, fc_layer["middle_fc"], fc_layer["middle_fc_size"], pretrained=True).to(device)
+    
+    # -------- OPTIMIZER -------- try AdamW?
+    optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
 
-    # -------- OPTIMIZER --------
-    optimizer = Adam(model.parameters(), lr, weight_decay=Config.weight_decay, amsgrad=is_amsgrad)
-
+    if checkpoint:
+        checkpoint_config = torch.load(checkpoint)
+        model.load_state_dict(checkpoint_config['model_state'])
+        optimizer.load_state_dict(checkpoint_config['optimizer_state'])
+    
     # -------- SCHEDULER --------
     scheduler = None
     if Config.scheduler == 'ReduceLROnPlateau':

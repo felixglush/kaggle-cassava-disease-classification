@@ -3,7 +3,7 @@ import torch
 from torch.cuda.amp import autocast
 from config import Config
 import gc 
-
+from model import Model
 # for each sample in this batch, take the maximum predicted class
 def process_model_output(predictions, output, batch_size):
     batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()]) # sample preds for the batch
@@ -94,7 +94,8 @@ def valid_epoch(dataloader, model, criterion, logger, device):
 # runs inference on all trained models, averages result   
 def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device):
     predictions = np.zeros(num_samples)
-    for s in states:
+    for i, s in enumerate(states):
+        print('inference on state', i)
         model = Model(model_arch, num_labels, False, 0, pretrained=True).to(device)
         model.load_state_dict(s)
         model.eval()
@@ -109,12 +110,10 @@ def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, 
                 output = model(images)
             
             batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
-            predictions[start:end] = batch_sample_preds
+            predictions[start:end] += np.reshape(batch_sample_preds, (len(images),))
             start = end
             
         del model
         gc.collect()
-    print(np.max(predictions), np.min(predictions))
     averaged = np.round(predictions / (num_labels - 1), decimals=0)
-    print(np.max(averaged), np.min(averaged))
     return averaged

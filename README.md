@@ -22,3 +22,5 @@ Ideas to try:
 11. balanced classes instead of stratified?
 12. verify per class accuracy
 13. use the OOF prediction of the model trained with all data, and eliminate images where the predicted value is too small for the correct label. After eliminating a small quantity of training images, retrain from scratch with the remaining ones.
+14. 1cycle policy
+15. LR plots

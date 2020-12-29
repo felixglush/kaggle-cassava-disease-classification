@@ -1,8 +1,8 @@
 # project data
 /data/
-/trained-models/
-config.py
 EnvCheck.ipynb
+/logs/
+/ray-results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -7,7 +7,8 @@ import torch
 from sklearn.model_selection import StratifiedKFold
 from torch.utils.data import random_split
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR, ReduceLROnPlateau
-from torch.optim import Adam
+from torch.optim import Adam, AdamW, SGD
+from adabound import AdaBound
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from albumentations import (
@@ -106,8 +107,10 @@ def setup_model_optimizer(model_arch, lr, is_amsgrad, num_labels, fc_layer, weig
     model = Model(model_arch, num_labels, fc_layer["middle_fc"], fc_layer["middle_fc_size"], pretrained=True).to(device)
     
     # -------- OPTIMIZER -------- try AdamW?
-    optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
-
+    #optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
+    #optimizer = AdamW(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
+    #optimizer = SGD(model.parameters(), lr, momentum=0.9)
+    optimizer = AdaBound(model.parameters(), lr)
     if checkpoint:
         checkpoint_config = torch.load(checkpoint)
         model.load_state_dict(checkpoint_config['model_state'])

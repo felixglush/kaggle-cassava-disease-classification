@@ -6,7 +6,7 @@ import cv2
 import torch
 from sklearn.model_selection import StratifiedKFold
 from torch.utils.data import random_split
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR, ReduceLROnPlateau, StepLR
 from torch.optim import Adam, AdamW, SGD
 from adabound import AdaBound
 from torch.utils.data import Dataset, DataLoader
@@ -91,30 +91,38 @@ def get_valid_transforms(image_size):
 def get_schd_crit(optimizer):
     # -------- SCHEDULER --------
     scheduler = None
+    
     if Config.scheduler == 'ReduceLROnPlateau':
-        scheduler = ReduceLROnPlateau(optimizer, factor=Config.factor, patience=Config.patience, eps=Config.eps, verbose=True)
+        scheduler = ReduceLROnPlateau(optimizer, factor=Config.factor, patience=Config.patience, 
+                                      eps=Config.eps, verbose=Config.schd_verbose)
+    
     elif Config.scheduler == 'CosineAnnealingLR':
-        scheduler = CosineAnnealingLR(optimizer, T_max=Config.T_max, eta_min=Config.min_lr, verbose=True)
+        scheduler = CosineAnnealingLR(optimizer, T_max=Config.T_max, eta_min=Config.min_lr, verbose=Config.schd_verbose)
+    
     elif Config.scheduler == 'CosineAnnealingWarmRestarts':
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=Config.T_0, T_mult=Config.T_mult, eta_min=Config.min_lr, verbose=True)
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=Config.T_0, T_mult=Config.T_mult, 
+                                                eta_min=Config.min_lr, verbose=Config.schd_verbose)
+    
+    elif Config.scheduler == 'StepLR':
+        scheduler = StepLR(optimizer, step_size=Config.step_size_lr, gamma=Config.gamma, verbose=Config.schd_verbose)
     
     # -------- LOSS FUNCTION --------
     criterion = torch.nn.CrossEntropyLoss()
     return scheduler, criterion
 
-def setup_model_optimizer(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, device, checkpoint=None):
+def setup_model_optimizer(model_arch, lr, is_amsgrad, num_labels, fc_layer, weight_decay, 
+                          device, checkpoint=None, nesterov=False, momentum=None):
      # -------- MODEL INSTANTIATION --------
     model = Model(model_arch, num_labels, fc_layer["middle_fc"], fc_layer["middle_fc_size"], pretrained=True).to(device)
     
     # -------- OPTIMIZER -------- try AdamW?
     #optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
     #optimizer = AdamW(model.parameters(), lr, weight_decay=weight_decay, amsgrad=is_amsgrad)
-    #optimizer = SGD(model.parameters(), lr, momentum=0.9)
-    optimizer = AdaBound(model.parameters(), lr)
+    optimizer = SGD(model.parameters(), lr, momentum=momentum, nesterov=nesterov)
+    #optimizer = AdaBound(model.parameters(), lr)
     if checkpoint:
-        checkpoint_config = torch.load(checkpoint)
-        model.load_state_dict(checkpoint_config['model_state'])
-        optimizer.load_state_dict(checkpoint_config['optimizer_state'])
+        model.load_state_dict(checkpoint['model_state'])
+        optimizer.load_state_dict(checkpoint['optimizer_state'])
     
     return model, optimizer
 

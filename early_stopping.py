@@ -7,12 +7,12 @@ class EarlyStopping():
     Args:
     
     """
-    def __init__(self, metric, logger, patience=4, delta_improve=0):
+    def __init__(self, metric, logger, best_score=None, counter=0, patience=4, delta_improve=0):
         self.metric = metric
-        self.best_score = None
+        self.best_score = best_score
         self.logger = logger
         self.patience = patience
-        self.counter = 0
+        self.counter = counter
         self.delta_improve = delta_improve 
         self.stop = False
         

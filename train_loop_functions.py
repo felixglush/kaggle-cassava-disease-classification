@@ -5,6 +5,7 @@ from config import Config
 import gc 
 from model import Model
 from tqdm import tqdm
+from scipy import stats
 
 # for each sample in this batch, take the maximum predicted class
 def process_model_output(predictions, output, batch_size):
@@ -38,8 +39,15 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
         # See https://pytorch.org/docs/stable/amp.html#gradient-scaling for why scaling is helpful
         scaler.scale(loss).backward()
         
+        # increase LR ... (LR Range test)
+        #if scheduler: scheduler.step()
+        
         total_norm = 0.
         
+        if scheduler and epoch > Config.wait_epochs_schd and Config.scheduler == "CosineAnnealingWarmRestarts":
+            scheduler.step()
+        
+        # Gradient accumulation (larger effective batch size)
         if (batch_idx + 1) % accum_iter == 0 or (batch_idx + 1) == len(dataloader):
             # if want to implement gradient clipping, see this first. need to unscale gradients first.
             # https://pytorch.org/docs/stable/notes/amp_examples.html#working-with-unscaled-gradients
@@ -47,14 +55,16 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
             # Unscales the gradients of optimizer's assigned params in-place
             scaler.unscale_(optimizer)
 
-            # get gradients to check for explosions and determine clipping value
+            # Monitor gradients for explosions
             for p in list(filter(lambda p: p.grad is not None, model.parameters())):
                 param_norm = p.grad.data.norm(2).item() # norm of the gradient tensor
                 total_norm += param_norm ** 2
             total_norm = np.sqrt(total_norm)
+            
             total_batches_processed = epoch * len(dataloader) + batch_idx
             tb_writer.add_scalar(f'Train loss fold {fold}', running_loss / (batch_idx + 1), total_batches_processed)
             tb_writer.add_scalar(f'Gradient fold {fold}', total_norm, total_batches_processed)
+            tb_writer.add_scalar(f'Learning Rate', optimizer.param_groups[0]['lr'], total_batches_processed) 
             
             # Since the gradients of optimizer's assigned params are unscaled, clips as usual:
             #torch.nn.utils.clip_grad_norm_(model.parameters(), Config.max_norm_grad)
@@ -67,13 +77,11 @@ def train_epoch(dataloader, model, criterion, optimizer, scheduler, scaler, accu
             # Updates the scale for next iteration.
             scaler.update()
             optimizer.zero_grad()
-            #if scheduler: scheduler.step()
-                        
         gc.collect()
     logger.info(f'[TRAIN] batch loss: {running_loss / (batch_idx + 1)}')
     return running_loss / len(dataloader)
 
-def valid_epoch(dataloader, model, criterion, logger, device, tb_writer, fold=None, epoch=None, holdout=False):
+def valid_epoch(dataloader, model, criterion, logger, device, tb_writer, fold, epoch=None, holdout=False):
     model.eval()
     running_loss = 0.0 # for this epoch, across all batches
     predictions = np.array([])
@@ -89,12 +97,15 @@ def valid_epoch(dataloader, model, criterion, logger, device, tb_writer, fold=No
             output = model(images)
             # output: [batch_size, # classes] -> [batch_size, 5]
         loss = criterion(output, labels)
-        
         running_loss += loss.detach().item()
-        if not holdout and (batch_idx + 1) % Config.print_every == 0:
-            total_batches_processed = epoch * len(dataloader) + batch_idx
-            tb_writer.add_scalar(f'Validation loss fold {fold}', running_loss / (batch_idx + 1), total_batches_processed)
-            
+        
+        if (batch_idx + 1) % Config.print_every == 0:
+            if not holdout:
+                total_batches_processed = epoch * len(dataloader) + batch_idx
+                tb_writer.add_scalar(f'Validation loss fold {fold}', running_loss / (batch_idx + 1), total_batches_processed)
+            else:
+                tb_writer.add_scalar(f'Holdout loss fold {fold}', running_loss / (batch_idx + 1), fold)
+                
         # for each sample in this batch, take the maximum predicted class
         predictions = process_model_output(predictions, output, batch_size=images.size(0))
 
@@ -103,13 +114,13 @@ def valid_epoch(dataloader, model, criterion, logger, device, tb_writer, fold=No
     logger.info(f'[VAL] batch loss: {running_loss / (batch_idx+1)}')    
     return running_loss / len(dataloader), predictions
 
-# runs inference on all trained models, averages result   
-def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device):
-    predictions = np.zeros(num_samples)
-    progress_bar = tqdm(states, total=len(states))
-    for s in progress_bar:
+# runs inference on all trained models, averages/majority votes the result   
+def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device, mode='vote'):
+    predictions = np.zeros((num_samples, len(states)))
+    progress_bar = tqdm(range(len(states)), total=len(states))
+    for state_idx in progress_bar:
         model = Model(model_arch, num_labels, False, 0, pretrained=True).to(device)
-        model.load_state_dict(s)
+        model.load_state_dict(states[state_idx])
         model.eval()
        
         start = 0
@@ -118,14 +129,18 @@ def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, 
             
             images = images.to(device)
 
-            with torch.no_grad():
+            with torch.no_grad(): 
                 output = model(images)
             
             batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
-            predictions[start:end] += np.reshape(batch_sample_preds, (len(images),))
+            predictions[start:end, state_idx] = np.reshape(batch_sample_preds, (len(images),))
+            
             start = end
             
         del model
         gc.collect()
-    averaged = np.round(predictions / (num_labels - 1), decimals=0)
-    return averaged
+        
+    if mode == 'avg':
+        return np.round(np.mean(predictions, axis=1), decimals=0)
+    elif mode == 'vote':
+        return stats.mode(predictions, axis=1)[0]

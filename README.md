@@ -3,8 +3,8 @@
 The competition can be found [here](https://www.kaggle.com/c/cassava-leaf-disease-classification/overview).
 
 Notebooks:
-- [training.py](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/training.ipynb)
-- [inference.py](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/inference.ipynb)
+- [training](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/training.ipynb)
+- [inference](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/inference.ipynb)
 
 Resources:
 - AdaBound [implementation](https://github.com/Luolc/AdaBound/).

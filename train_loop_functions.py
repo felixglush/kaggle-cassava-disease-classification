@@ -115,7 +115,7 @@ def valid_epoch(dataloader, model, criterion, logger, device, tb_writer, fold, e
     return running_loss / len(dataloader), predictions
 
 # runs inference on all trained models, averages/majority votes the result   
-def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device, mode='vote'):
+def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, device, mode='vote', test=True):
     predictions = np.zeros((num_samples, len(states)))
     progress_bar = tqdm(range(len(states)), total=len(states))
     for state_idx in progress_bar:
@@ -124,15 +124,18 @@ def ensemble_inference(states, model_arch, num_labels, dataloader, num_samples, 
         model.eval()
        
         start = 0
-        for batch_idx, (images, labels) in enumerate(dataloader):
+        for batch_idx, data in enumerate(dataloader):
+            if test: images = data
+            else: images, _ = data
+            
             end = start + len(images)
             
             images = images.to(device)
 
             with torch.no_grad(): 
                 output = model(images)
-            
-            batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().numpy()])
+                            
+            batch_sample_preds = np.array([torch.argmax(output, 1).detach().cpu().int().numpy()])
             predictions[start:end, state_idx] = np.reshape(batch_sample_preds, (len(images),))
             
             start = end

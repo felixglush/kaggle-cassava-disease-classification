@@ -31,3 +31,5 @@ trained-models/exp0_82_Adam/aggregated_output_df.csv filter=lfs diff=lfs merge=l
 trained-models/exp0_82_Adam/tf_efficientnet_b4_ns_fold1.pth filter=lfs diff=lfs merge=lfs -text
 trained-models/exp1_88_Adam/tf_efficientnet_b4_ns_fold1.pth filter=lfs diff=lfs merge=lfs -text
 trained-models/exp6_sgd/tf_efficientnet_b4_ns_fold2.pth filter=lfs diff=lfs merge=lfs -text
+trained-models/exp6_sgd/tf_efficientnet_b4_ns_fold3.pth filter=lfs diff=lfs merge=lfs -text
+trained-models/exp6_sgd/tf_efficientnet_b4_ns_fold4.pth filter=lfs diff=lfs merge=lfs -text

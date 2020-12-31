@@ -8,7 +8,7 @@ class CassavaDataset(Dataset):
         self.data_root_dir = data_root_dir
         self.transform = transform
         self.output_label = output_label
-        self.labels = self.df.label.values
+        self.labels = self.df.label.values if output_label else None
  
     def get_image(self, path):
         img_bgr = cv2.imread(path)

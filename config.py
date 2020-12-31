@@ -1,5 +1,6 @@
 from ray import tune
 class Config:
+    
     seed = 123
     data_dir = './data'
     train_img_dir = data_dir + '/train_images'
@@ -7,6 +8,7 @@ class Config:
     data_csv = data_dir + '/train.csv'
     save_dir = './trained-models'
     target_col = 'label'
+    num_classes = 5    
     
     model_arch =  'tf_efficientnet_b4_ns'
     img_size = 512
@@ -48,4 +50,3 @@ class Config:
     schd_verbose = False
     num_workers = 0
     verbose_step = 1
-    

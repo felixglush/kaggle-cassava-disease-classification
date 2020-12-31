@@ -2,11 +2,14 @@
 
 The competition can be found [here](https://www.kaggle.com/c/cassava-leaf-disease-classification/overview).
 
-AdaBound [implementation](https://github.com/Luolc/AdaBound/).
+Notebooks:
+- [training.py](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/training.ipynb)
+- [inference.py](https://github.com/felixglush/kaggle-cassava-disease-classification/blob/master/inference.ipynb)
 
-[Ray Tune](https://docs.ray.io/en/latest/tune/index.html) for hyperparameter selection.
-
-EfficientNet implementation from [here](https://rwightman.github.io/pytorch-image-models/).
+Resources:
+- AdaBound [implementation](https://github.com/Luolc/AdaBound/).
+- [Ray Tune](https://docs.ray.io/en/latest/tune/index.html) for hyperparameter selection.
+- EfficientNet-B4 Noisy Student implementation [here](https://rwightman.github.io/pytorch-image-models/).
 
 Ideas to try:
 1. Cross entropy loss, stratified CV, no fmix, cutmix, mixup, w gradient scaling & accumulation [done]
@@ -17,10 +20,10 @@ Ideas to try:
 3. fmix, cutmix
 4. external data
 7. Test time augmentation
-8. Better ensemble prediction - majority vote, other...?
+8. Better ensemble prediction - majority vote [done], other...?
 10. resnet model
 11. balanced classes instead of stratified?
 12. verify per class accuracy
 13. use the OOF prediction of the model trained with all data, and eliminate images where the predicted value is too small for the correct label. After eliminating a small quantity of training images, retrain from scratch with the remaining ones.
 14. 1cycle policy
-15. LR plots
+15. Learning rate range plots for LR selection [done]

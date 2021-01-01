@@ -35,21 +35,21 @@ def set_seeds(seed):
 
 # Reads the train.csv file and creates a dataframe out of it, optionally separating a test set that won't be used
 # in any stratified cross validation or training
-def read_csvs(data_dir, debug, num_samples=None, test_proportion=None):
-    train_df = pd.read_csv(data_dir + '/train.csv', engine='python')
+def read_csv(filepath, debug, num_samples=None):
+    train_df = pd.read_csv(filepath, engine='python')
+
     if debug or num_samples:
         n = num_samples if num_samples else 200
         train_df = train_df.sample(n=n, random_state=Config.seed).reset_index(drop=True)
-    
-    holdout_df = None
-    if test_proportion:
-        train_df, holdout_df = train_test_split(train_df, test_size=test_proportion)
-        train_df = train_df.reset_index(drop=True)
-        holdout_df = holdout_df.reset_index(drop=True)
-    
-    sample_df = pd.read_csv(data_dir + '/sample_submission.csv', engine='python')    
-        
-    return train_df, sample_df, holdout_df
+
+    return train_df
+
+def make_holdout_df(train_df, holdout_proportion=0.15):
+    train_df, holdout_df = train_test_split(train_df, test_size=holdout_proportion, random_state=Config.seed)
+    train_df = train_df.reset_index(drop=True)
+    holdout_df = holdout_df.reset_index(drop=True)
+    return train_df, holdout_df
+
 
 def stratify_split(df, splits, seed, target_col):
     train_folds = df.copy()

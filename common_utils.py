@@ -2,25 +2,19 @@ import os
 import random
 import numpy as np
 import pandas as pd
-import cv2
-import torch
 from sklearn.model_selection import StratifiedKFold
-from torch.utils.data import random_split
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealingLR, ReduceLROnPlateau, StepLR
-from torch.optim import Adam, AdamW, SGD
-from adabound import AdaBound
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
+from torch.optim import SGD
+from torch.utils.data import DataLoader
 from albumentations import (
-    HorizontalFlip, VerticalFlip, IAAPerspective, ShiftScaleRotate, CLAHE, RandomRotate90,
-    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue,
-    IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine, RandomResizedCrop,
-    IAASharpen, IAAEmboss, RandomBrightnessContrast, Flip, OneOf, Compose, Normalize, Cutout, CoarseDropout, ShiftScaleRotate, CenterCrop, Resize
+    HorizontalFlip, VerticalFlip, Transpose, HueSaturationValue,
+    RandomResizedCrop,
+    RandomBrightnessContrast, Compose, Normalize, Cutout, CoarseDropout, ShiftScaleRotate, CenterCrop, Resize
 )
 from albumentations.pytorch import ToTensorV2
 import torch
 from config import Config
-from cassava_dataset import CassavaDataset
+from train_utilities.cassava_dataset import CassavaDataset
 from model import Model
 from sklearn.model_selection import train_test_split
 

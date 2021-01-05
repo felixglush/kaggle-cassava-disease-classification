@@ -1,8 +1,19 @@
 import re
+from datetime import timedelta
 from typing import List
+
+from torch.cuda.amp import GradScaler
+from torch.utils.tensorboard import SummaryWriter
+import torch
+import numpy as np
+
+from train_utilities.trainer import Trainer
+from train_utilities.training_phase import Phase
+
 
 """
 This file defines a base class all callbacks inherit, a delegator, and the callbacks themselves.
+Why callbacks? They let us make modular changes to the training code without rewriting the training loop itself.
 """
 
 
@@ -30,6 +41,8 @@ class CallbackBase:
     def batch_started(self, **kwargs): pass
 
     def batch_ended(self, **kwargs): pass
+
+    def gradients_accumulated(self, **kwargs): pass
 
     def before_forward_pass(self, **kwargs): pass
 
@@ -111,6 +124,9 @@ class CallbackGroupDelegator(CallbackBase):
     def batch_started(self, **kwargs):
         self.invoke('batch_started', **kwargs)
 
+    def gradients_accumulated(self, **kwargs):
+        self.invoke('gradients_accumulated', **kwargs)
+
     def batch_ended(self, **kwargs):
         self.invoke('batch_ended', **kwargs)
 
@@ -127,61 +143,174 @@ class CallbackGroupDelegator(CallbackBase):
         self.invoke('after_backward_pass', **kwargs)
 
 
-"""
-Example usage below. Note how epoch_started and epoch_ended in Test1/2 get different arguments but when
-passed as `cb.epoch_started(epoch=1, msg="hey test1", test2=123)`, each callback acts only on the args
-passed into its respective implementation of epoch_started/ended. 
-See cbtest_example.py
-"""
-
-
-class Test1(CallbackBase):
-    def fold_started(self, fold, metrics, **kwargs):
-        print("Test 1 fold_started", fold, metrics)
-
-    def fold_ended(self, fold, metrics, **kwargs):
-        print("Test 1 fold_ended", fold, metrics)
-
-    def epoch_started(self, epoch, msg, **kwargs):
-        print("Test1 epoch_started", epoch, msg)
-
-    def epoch_ended(self, epoch, msg, **kwargs):
-        print("Test1 epoch_ended", epoch, msg)
-
-
-class Test2(CallbackBase):
-    def fold_started(self, fold, metrics, **kwargs):
-        print("Test 2 fold_started", fold, metrics)
-
-    def epoch_started(self, epoch, t, **kwargs):
-        print("Test2 epoch_started", epoch, t)
-
-    def epoch_ended(self, epoch, t2, **kwargs):
-        print("Test2 epoch_ended", epoch, t2)
-
-
 class EarlyStopping(CallbackBase):
-    def __init__(self):
-        pass
+    def __init__(self, monitor, logger, delta_improve=0, patience=5):
+        self.monitor = monitor
+        self.delta_improve = delta_improve
+        self.counter = 0
+        self.patience = patience
+        self.logger = logger
 
-    def epoch_ended(self, **kwargs):
-        pass
+    def phase_ended(self, trainer: Trainer, phase: Phase, **kwargs):
+        if self.monitor == 'val_loss' and not phase.is_training:
+            score_improved = phase.average_epoch_loss() >= phase.best_loss - self.delta_improve
+
+            if score_improved:
+                self.counter = 0
+            else:
+                self.counter += 1
+                if self.counter >= self.patience:
+                    self.logger.info(
+                        f'Metric {self.monitor} has not seen improvement in {self.patience} epochs. Early stop.')
+                    trainer.stop = True
 
 
 class ModelCheckpoint(CallbackBase):
-    def __init__(self):
-        pass
+    """
+    directory: directory to save the model in
+    monitor: the metric to monitor for improvement. Model is saved whenever this is better than the best seen so far.
+    """
 
-    def epoch_ended(self, **kwargs):
-        pass
+    def __init__(self, directory, logger, metric='val_loss', verbose=True):
+        self.directory = directory
+        self.metric = metric
+        self.logger = logger
+        self.verbose = verbose and logger
+
+    def phase_ended(self, trainer: Trainer, phase: Phase, **kwargs):
+        if self.metric == 'val_loss' and not phase.is_training and\
+                phase.average_epoch_loss() >= phase.best_loss:
+            phase.best_loss = phase.average_epoch_loss()
+            torch.save({'model_state': trainer.model.state_dict(),
+                        'optimizer_state': trainer.optimizer.state_dict(),
+                        'preds': phase.latest_preds,
+                        'accuracy': phase.accuracy,
+                        'val_loss': phase.best_loss,
+                        'fold': trainer.current_fold,
+                        'epoch_saved_at': trainer.current_epoch
+                        },
+                       f'{self.directory}/{trainer.settings.model_arch}_fold{trainer.current_fold}')
+            if self.verbose:
+                self.logger.info('Score improved - model saved')
+        else:
+            if self.verbose:
+                self.logger.info('Score not improved - model not saved')
 
 
 class MetricLogger(CallbackBase):
-    def __init__(self):
+    def __init__(self, logger, tensorboard_writer: SummaryWriter):
+        self.logger = logger
+        self.tb_writer = tensorboard_writer
+
+    def training_started(self, **kwargs):
+        if self.logger:
+            self.logger.info('Training started')
+
+    def training_ended(self, elapsed_time, **kwargs):
+        if self.logger:
+            self.logger.info(f'Training complete in {str(timedelta(seconds=elapsed_time))}')
+
+    def fold_started(self, fold, total_folds, **kwargs):
+        if self.logger:
+            self.logger(f'Training fold {fold}/{total_folds}')
+
+    def fold_ended(self, fold, best_val_accuracy, holdout_accuracy, holdout_loss, **kwargs):
+        if self.tb_writer:
+            self.tb_writer.add_scalar(f'Fold {fold} best validation accuracy', best_val_accuracy, fold)
+            self.tb_writer.add_scalar(f'Fold {fold} holdout accuracy', holdout_accuracy, fold)
+            self.tb_writer.add_scalar(f'Fold {fold} holdout loss', holdout_loss, fold)
+        if self.logger:
+            self.logger.info(f'\nFold {fold} summary:\n ' + \
+                             f'Best validation accuracy: {best_val_accuracy} ' + \
+                             f'Holdout accuracy: {holdout_accuracy} ' + \
+                             f'Holdout loss: {holdout_loss}')
+
+    def epoch_started(self, **kwargs):
         pass
 
+    def epoch_ended(self, metrics, **kwargs):
+        fold = metrics.fold + 1
+        avg_train_loss = metrics.avg_train_loss
+        avg_val_loss = metrics.avg_val_loss
+        val_accuracy = metrics.val_accuracy
+        e = metrics.epoch
 
-class ProgressBar(CallbackBase):
-    def __init__(self):
+        if self.tb_writer:
+            self.tb_writer.add_scalar(f'Avg Epoch Train Loss Fold {fold}', avg_train_loss, e)
+            self.tb_writer.add_scalar(f'Avg Epoch Val Loss Fold {fold}', avg_val_loss, e)
+            self.tb_writer.add_scalar(f'Epoch Val Accuracy Fold {fold}', val_accuracy, e)
+        if self.logger:
+            self.logger.info(f'\nEpoch training summary:\n Fold {fold}/{total_folds} | ' + \
+                             f'Epoch: {e + 1}/{total_epochs} | ' + \
+                             f'Epoch time: {metrics.epoch_elapsed_time} sec\n' + \
+                             f'Training loss: {avg_train_loss} | ' + \
+                             f'Validation loss: {avg_val_loss} | ' + \
+                             f'Accuracy: {val_accuracy}')
+
+    def phase_started(self, **kwargs):
         pass
 
+    def phase_ended(self, **kwargs):
+        pass
+
+    def batch_started(self, **kwargs):
+        pass
+
+    def batch_ended(self, trainer: Trainer, phase: Phase, **kwargs):
+        if self.tb_writer and (phase.batch_idx + 1) % trainer.settings.print_every == 0:
+            total_batches_processed = trainer.current_epoch * len(phase.loader) + phase.batch_idx
+            if phase.is_training:  # this was a training batch
+                self.tb_writer.add_scalar(f'Train loss fold {trainer.current_fold}',
+                                          phase.running_loss / (phase.batch_idx + 1),
+                                          total_batches_processed)
+                self.tb_writer.add_scalar(f'Gradient fold {trainer.current_fold}',
+                                          trainer.current_gradient_norm,
+                                          total_batches_processed)
+                self.tb_writer.add_scalar(f'Learning Rate',
+                                          trainer.optimizer.param_groups[0]['lr'],
+                                          total_batches_processed)
+            else:
+                if phase.every_epoch:
+                    self.tb_writer.add_scalar(f'Validation loss fold {trainer.current_fold}',
+                                              phase.running_loss / (phase.batch_idx + 1),
+                                              total_batches_processed)
+                else:  #
+                    self.tb_writer.add_scalar(f'Holdout loss fold {trainer.current_fold}',
+                                              phase.running_loss / (phase.batch_idx + 1),
+                                              trainer.current_fold)
+
+
+class LRSchedule(CallbackBase):
+    def __int__(self):
+        pass
+
+    def batch_ended(self, trainer: Trainer, wait_period, **kwargs):
+        if trainer.scheduler and \
+                ((trainer.lr_test and isinstance(trainer.scheduler, torch.optim.lr_scheduler.StepLR)) or
+                 (trainer.current_epoch > wait_period and
+                  isinstance(trainer.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts))):
+            trainer.scheduler.step()
+
+
+class GradientHandler(CallbackBase):
+    def __init__(self, accumulate_batches):
+        self.accumlate_batches = accumulate_batches
+
+    def after_backward_pass(self, trainer: Trainer, scaler: GradScaler, phase: Phase, **kwargs):
+        if (phase.batch_idx + 1) % self.accumlate_batches == 0 or (phase.batch_idx + 1) == len(phase.loader):
+            scaler.unscale_(trainer.optimizer)
+
+            # Monitor gradients for explosions
+            total_norm = 0.0
+            for p in list(filter(lambda param: param.grad is not None, trainer.model.parameters())):
+                param_norm = p.grad.data.norm(2).item()  # norm of the gradient tensor
+                total_norm += param_norm ** 2
+            total_norm = np.sqrt(total_norm)
+            trainer.current_gradient_norm = total_norm
+
+            if trainer.clip:
+                torch.nn.utils.clip_grad_norm_(trainer.model.parameters(), trainer.clip_at)
+
+            scaler.step(trainer.optimizer)
+            scaler.update()
+            trainer.optimizer.zero_grad()

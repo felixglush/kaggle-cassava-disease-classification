@@ -7,7 +7,6 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import numpy as np
 
-from train_utilities.trainer import Trainer
 from train_utilities.training_phase import Phase
 
 
@@ -151,7 +150,7 @@ class EarlyStopping(CallbackBase):
         self.patience = patience
         self.logger = logger
 
-    def phase_ended(self, trainer: Trainer, phase: Phase, **kwargs):
+    def phase_ended(self, trainer, phase: Phase, **kwargs):
         if self.monitor == 'val_loss' and not phase.is_training:
             score_improved = phase.average_epoch_loss() >= phase.best_loss - self.delta_improve
 
@@ -177,7 +176,7 @@ class ModelCheckpoint(CallbackBase):
         self.logger = logger
         self.verbose = verbose and logger
 
-    def phase_ended(self, trainer: Trainer, phase: Phase, **kwargs):
+    def phase_ended(self, trainer, phase: Phase, **kwargs):
         if self.metric == 'val_loss' and not phase.is_training and\
                 phase.average_epoch_loss() >= phase.best_loss:
             phase.best_loss = phase.average_epoch_loss()
@@ -189,7 +188,7 @@ class ModelCheckpoint(CallbackBase):
                         'fold': trainer.current_fold,
                         'epoch_saved_at': trainer.current_epoch
                         },
-                       f'{self.directory}/{trainer.settings.model_arch}_fold{trainer.current_fold}')
+                       f'{self.directory}/{trainer.config.model_arch}_fold{trainer.current_fold}')
             if self.verbose:
                 self.logger.info('Score improved - model saved')
         else:
@@ -228,20 +227,20 @@ class MetricLogger(CallbackBase):
     def epoch_started(self, **kwargs):
         pass
 
-    def epoch_ended(self, metrics, **kwargs):
-        fold = metrics.fold + 1
+    def epoch_ended(self, trainer, metrics, **kwargs):
+        fold = trainer.current_fold + 1
+        e = trainer.current_epoch
         avg_train_loss = metrics.avg_train_loss
         avg_val_loss = metrics.avg_val_loss
         val_accuracy = metrics.val_accuracy
-        e = metrics.epoch
 
         if self.tb_writer:
             self.tb_writer.add_scalar(f'Avg Epoch Train Loss Fold {fold}', avg_train_loss, e)
             self.tb_writer.add_scalar(f'Avg Epoch Val Loss Fold {fold}', avg_val_loss, e)
             self.tb_writer.add_scalar(f'Epoch Val Accuracy Fold {fold}', val_accuracy, e)
         if self.logger:
-            self.logger.info(f'\nEpoch training summary:\n Fold {fold}/{total_folds} | ' + \
-                             f'Epoch: {e + 1}/{total_epochs} | ' + \
+            self.logger.info(f'\nEpoch training summary:\n Fold {fold}/{trainer.config.fold_num} | ' + \
+                             f'Epoch: {e + 1}/{trainer.config.epochs} | ' + \
                              f'Epoch time: {metrics.epoch_elapsed_time} sec\n' + \
                              f'Training loss: {avg_train_loss} | ' + \
                              f'Validation loss: {avg_val_loss} | ' + \
@@ -256,8 +255,8 @@ class MetricLogger(CallbackBase):
     def batch_started(self, **kwargs):
         pass
 
-    def batch_ended(self, trainer: Trainer, phase: Phase, **kwargs):
-        if self.tb_writer and (phase.batch_idx + 1) % trainer.settings.print_every == 0:
+    def batch_ended(self, trainer, phase: Phase, **kwargs):
+        if self.tb_writer and (phase.batch_idx + 1) % trainer.config.print_every == 0:
             total_batches_processed = trainer.current_epoch * len(phase.loader) + phase.batch_idx
             if phase.is_training:  # this was a training batch
                 self.tb_writer.add_scalar(f'Train loss fold {trainer.current_fold}',
@@ -284,7 +283,7 @@ class LRSchedule(CallbackBase):
     def __int__(self):
         pass
 
-    def batch_ended(self, trainer: Trainer, wait_period, **kwargs):
+    def batch_ended(self, trainer, wait_period, **kwargs):
         if trainer.scheduler and \
                 ((trainer.lr_test and isinstance(trainer.scheduler, torch.optim.lr_scheduler.StepLR)) or
                  (trainer.current_epoch > wait_period and
@@ -296,7 +295,7 @@ class GradientHandler(CallbackBase):
     def __init__(self, accumulate_batches):
         self.accumlate_batches = accumulate_batches
 
-    def after_backward_pass(self, trainer: Trainer, scaler: GradScaler, phase: Phase, **kwargs):
+    def after_backward_pass(self, trainer, scaler: GradScaler, phase: Phase, **kwargs):
         if (phase.batch_idx + 1) % self.accumlate_batches == 0 or (phase.batch_idx + 1) == len(phase.loader):
             scaler.unscale_(trainer.optimizer)
 

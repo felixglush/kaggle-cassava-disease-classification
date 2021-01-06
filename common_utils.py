@@ -7,14 +7,13 @@ from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, CosineAnnealin
 from torch.optim import SGD
 from torch.utils.data import DataLoader
 from albumentations import (
-    HorizontalFlip, VerticalFlip, Transpose, HueSaturationValue,
-    RandomResizedCrop,
+    HorizontalFlip, VerticalFlip, Transpose, HueSaturationValue, RandomResizedCrop,
     RandomBrightnessContrast, Compose, Normalize, Cutout, CoarseDropout, ShiftScaleRotate, CenterCrop, Resize
 )
 from albumentations.pytorch import ToTensorV2
 import torch
-from config import Config
-from train_utilities.cassava_dataset import CassavaDataset
+from config import ConstantConfig
+from cassava_dataset import CassavaDataset
 from model import Model
 from sklearn.model_selection import train_test_split
 
@@ -36,13 +35,13 @@ def read_csv(filepath, debug, num_samples=None):
 
     if debug or num_samples:
         n = num_samples if num_samples else 200
-        train_df = train_df.sample(n=n, random_state=Config.seed).reset_index(drop=True)
+        train_df = train_df.sample(n=n, random_state=ConstantConfig.seed).reset_index(drop=True)
 
     return train_df
 
 
 def make_holdout_df(train_df, holdout_proportion=0.15):
-    train_df, holdout_df = train_test_split(train_df, test_size=holdout_proportion, random_state=Config.seed)
+    train_df, holdout_df = train_test_split(train_df, test_size=holdout_proportion, random_state=config.ConstantConfig.seed)
     train_df = train_df.reset_index(drop=True)
     holdout_df = holdout_df.reset_index(drop=True)
     return train_df, holdout_df
@@ -87,26 +86,27 @@ def get_valid_transforms(image_size):
     ], p=1.)
 
 
-def setup_scheduler_loss(optimizer, lr_test, verbose=False):
+def setup_scheduler_loss(optimizer, lr_test, settings):
     # -------- LOSS FUNCTION --------
     criterion = torch.nn.CrossEntropyLoss()
 
     # -------- SCHEDULER --------
     scheduler = None
     if lr_test:
-        scheduler = StepLR(optimizer, step_size=Config.step_size_lr, gamma=Config.gamma, verbose=verbose)
+        scheduler = StepLR(optimizer, step_size=settings.step_size_lr, gamma=settings.gamma, verbose=settings.schedule_verbosity)
         return scheduler, criterion
 
-    if Config.scheduler == 'ReduceLROnPlateau':
-        scheduler = ReduceLROnPlateau(optimizer, factor=Config.factor, patience=Config.patience,
-                                      eps=Config.eps, verbose=Config.schd_verbose)
+    elif settings.scheduler == 'ReduceLROnPlateau':
+        scheduler = ReduceLROnPlateau(optimizer, factor=settings.factor, patience=settings.patience,
+                                      eps=settings.eps, verbose=settings.schedule_verbosity)
 
-    elif Config.scheduler == 'CosineAnnealingLR':
-        scheduler = CosineAnnealingLR(optimizer, T_max=Config.T_max, eta_min=Config.min_lr, verbose=verbose)
+    elif settings.scheduler == 'CosineAnnealingLR':
+        scheduler = CosineAnnealingLR(optimizer, T_max=settings.T_max,
+                                      eta_min=settings.min_lr, verbose=settings.schedule_verbosity)
 
-    elif Config.scheduler == 'CosineAnnealingWarmRestarts':
-        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=Config.T_0, T_mult=Config.T_mult,
-                                                eta_min=Config.min_lr, verbose=verbose)
+    elif settings.scheduler == 'CosineAnnealingWarmRestarts':
+        scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=settings.T_0, T_mult=settings.T_mult,
+                                                eta_min=settings.min_lr, verbose=settings.schedule_verbosity)
 
     return scheduler, criterion
 
@@ -141,9 +141,9 @@ def get_data_dfs(df, fold):
 # called for each fold
 def get_loaders(train_df, valid_df, train_batchsize, data_root_dir):
     train_dataset = CassavaDataset(train_df, data_root_dir, output_label=True,
-                                   transform=get_train_transforms(Config.img_size))
+                                   transform=get_train_transforms(config.ConstantConfig.img_size))
     valid_dataset = CassavaDataset(valid_df, data_root_dir, output_label=True,
-                                   transform=get_valid_transforms(Config.img_size))
+                                   transform=get_valid_transforms(config.ConstantConfig.img_size))
 
     train_dataloader = DataLoader(train_dataset, batch_size=train_batchsize,
                                   pin_memory=True, shuffle=False,

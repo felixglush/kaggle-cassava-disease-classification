@@ -3,7 +3,6 @@ import time
 
 from pandas import DataFrame
 import numpy as np
-from sklearn.metrics import accuracy_score
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
@@ -12,6 +11,7 @@ import torch
 from tqdm import tqdm
 
 from common_utils import get_data_dfs, get_loaders, setup_model_optimizer, setup_scheduler_loss
+from config import Configuration
 from train_utilities.callbacks import CallbackGroupDelegator, EarlyStopping, ModelCheckpoint, MetricLogger, LRSchedule, \
     GradientHandler
 from train_utilities.training_phase import Phase
@@ -33,17 +33,16 @@ class Trainer:
                  logger,
                  tensorboard_writer: SummaryWriter,
                  device,
-                 settings,
+                 config: Configuration,
                  checkpoint_params,
                  experiment_dir: str,
-                 lr_test=False, clip=False, clip_at=1.0):
+                 clip_at=0):
         self.clip_at = clip_at
-        self.clip = clip
         self.current_gradient_norm = None
         self.experiment_dir = experiment_dir
         self.holdout_loader = holdout_loader
         self.checkpoint_params = checkpoint_params
-        self.settings = settings
+        self.config = config
         self.folds_df = folds_df
         self.logger = logger
         self.tb_writer = tensorboard_writer
@@ -55,7 +54,7 @@ class Trainer:
         self.optimizer = None
         self.scheduler = None
         self.criterion = None
-        self.lr_test = lr_test
+        self.lr_test = config.lr_test
         self.model_checkpoint = None
 
         """
@@ -86,27 +85,27 @@ class Trainer:
         }
 
         self.callbacksGroup = CallbackGroupDelegator([
-            EarlyStopping(monitor='val_loss', logger=self.logger, patience=self.settings.loss_patience),
+            EarlyStopping(monitor='val_loss', logger=self.logger, patience=self.config.loss_patience),
             ModelCheckpoint(directory=experiment_dir, logger=self.logger, metric='val_loss'),
             MetricLogger(logger=self.logger, tensorboard_writer=self.tb_writer),
             LRSchedule(),
-            GradientHandler(self.settings.accum_iter)
+            GradientHandler(self.config.grad_accumulator_steps)
         ])
 
     def fit(self):
         starting_fold = 0
-        if self.checkpoint_params:
+        if self.checkpoint_params: # TODO: finish implementation
             # load
             if 'start_beginning_of' in self.checkpoint_params:
                 starting_fold = self.checkpoint_params['start_beginning_of']
             elif 'restart_from' in self.checkpoint_params and 'checkpoint_file_path' in self.checkpoint_params:
                 self.model_checkpoint = torch.load(self.checkpoint_params['checkpoint_file_path'])
-                # best loss
+
 
         start_time = time.time()
         self.callbacksGroup.training_started()
 
-        for fold in range(starting_fold, self.settings.fold_num):
+        for fold in range(starting_fold, self.config.fold_num):
             self.current_fold = fold
             self.run_fold()
 
@@ -144,13 +143,13 @@ class Trainer:
             Trains a new model corresponding to a particular fold over epochs
             Returns a DataFrame consisting of only the the rows used for validation along with corresponding predictions
         """
-        model_checkpoint_name = self.experiment_dir + f'/{self.settings.model_arch}_fold{self.current_fold}.pth'
+        model_checkpoint_name = self.experiment_dir + f'/{self.config.model_arch}_fold{self.current_fold}.pth'
 
         # -------- DATASETS AND LOADERS --------
         # select the fold, create train & validation loaders
         train_df, valid_df = get_data_dfs(self.folds_df, self.current_fold)
-        train_loader, valid_loader = get_loaders(train_df, valid_df, self.settings.train_bs,
-                                                 self.settings.data_dir + '/train_images')
+        train_loader, valid_loader = get_loaders(train_df, valid_df, self.config.train_bs,
+                                                 self.config.data_dir + '/train_images')
 
         learning_phases = [
             Phase('train', train_loader),
@@ -159,26 +158,26 @@ class Trainer:
         holdout_phase = Phase('holdout', self.holdout_loader, gradients=False, every_epoch=False)
 
         # make model and optimizer
-        self.model, self.optimizer = setup_model_optimizer(model_arch=self.settings.model_arch,
-                                                           lr=self.settings.lr,
-                                                           is_amsgrad=self.settings.is_amsgrad,
-                                                           num_labels=self.settings.num_classes,
-                                                           weight_decay=self.settings.weight_decay,
-                                                           momentum=self.settings.momentum,
+        self.model, self.optimizer = setup_model_optimizer(model_arch=self.config.model_arch,
+                                                           lr=self.config.lr,
+                                                           is_amsgrad=self.config.is_amsgrad,
+                                                           num_labels=self.config.num_classes,
+                                                           weight_decay=self.config.weight_decay,
+                                                           momentum=self.config.momentum,
                                                            fc_nodes=0,
                                                            device=self.device,
                                                            checkpoint=self.model_checkpoint)
 
-        self.scheduler, self.criterion = setup_scheduler_loss(self.optimizer, self.lr_test, self.settings.verbose)
+        self.scheduler, self.criterion = setup_scheduler_loss(self.optimizer, self.lr_test, self.config.verbose)
         grad_scaler = GradScaler()
 
-        self.callbacksGroup.fold_started(fold=self.current_fold, total_folds=self.settings.fold_num)
+        self.callbacksGroup.fold_started(fold=self.current_fold, total_folds=self.config.fold_num)
 
-        for e in range(self.settings.epochs):
+        for e in range(self.config.epochs):
             epoch_start_time = time.time()
             self.current_epoch = e
 
-            self.callbacksGroup.epoch_started(epoch=e, total_epochs=self.settings.epochs)
+            self.callbacksGroup.epoch_started(epoch=e, total_epochs=self.config.epochs)
 
             for phase in learning_phases:
                 phase.reset()
@@ -193,9 +192,7 @@ class Trainer:
                 self.callbacksGroup.phase_ended(trainer=self, phase=phase)
 
             # epoch logging
-            self.callbacksGroup.epoch_ended(metrics={
-                'fold': self.current_fold,
-                'epoch': e,
+            self.callbacksGroup.epoch_ended(trainer=self, metrics={
                 'avg_train_loss': self.get_last_train_loss(),
                 'avg_val_loss': self.get_last_val_loss(),
                 'val_accuracy': self.get_last_val_accuracy(),
@@ -236,7 +233,7 @@ class Trainer:
                 predictions = self.model(images)
                 loss = self.criterion(predictions, labels)
 
-            loss = loss / self.settings.accum_iter  # loss is normalized across the accumulated batches
+            loss = loss / self.config.grad_accumulator_steps  # loss is normalized across the accumulated batches
             scaled_loss = grad_scaler.scale(loss)
             phase.update_loss(scaled_loss.detach().item())
 
@@ -247,7 +244,7 @@ class Trainer:
             self.callbacksGroup.after_backward_pass(trainer=self, scaler=grad_scaler)
 
             # update LR (if scheduler requires it), write logs
-            self.callbacksGroup.batch_ended(trainer=self, phase=phase, wait_period=self.settings.wait_epochs_schd)
+            self.callbacksGroup.batch_ended(trainer=self, phase=phase, wait_period=self.config.wait_epochs_schd)
 
             gc.collect()
         return phase.average_epoch_loss()

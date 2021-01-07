@@ -1,9 +1,9 @@
 from pandas import DataFrame
 import numpy as np
 import torch
-
 from config import Configuration
 from pytorch_lightning import Trainer
+from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, GPUStatsMonitor
 
 from lightning_objects import LightningModel, LightningData
@@ -14,8 +14,9 @@ class TrainManager:
                  holdout_df: DataFrame,
                  config: Configuration,
                  checkpoint_params,
-                 experiment_dir: str):
+                 experiment_dir: str, experiment_name: str):
         self.experiment_dir = experiment_dir
+        self.experiment_name = experiment_name
         self.holdout_df = holdout_df
         self.config = config
         self.folds_df = folds_df
@@ -41,6 +42,7 @@ class TrainManager:
 
         for fold in range(starting_fold, self.config.fold_num):
             self.current_fold = fold
+
             self.run_fold()
 
         self.run_ensemble()
@@ -51,28 +53,47 @@ class TrainManager:
         """
         self.data_module.setup(str(self.current_fold))
 
-        self.model = LightningModel(config=self.config, criterion=self.criterion, pretrained=True)
+        self.model = LightningModel(config=self.config, criterion=self.criterion, fold=self.current_fold,
+                                    pretrained=True, lr=0.0001)
 
-        checkpoint = ModelCheckpoint(dirpath=self.experiment_dir,
-                                     filename=f'/{self.config.model_arch}_fold{self.current_fold}.pth',
+        checkpoint = ModelCheckpoint(filename=f'{self.experiment_dir}/{self.config.model_arch}_fold{self.current_fold}',
                                      monitor='val_loss',
                                      mode='min',
+                                     save_top_k=1,
                                      verbose=True)
+
         early_stop = EarlyStopping(monitor='val_loss',
                                    patience=self.config.patience,
                                    verbose=True,
                                    mode='min')
         gpu_stats = GPUStatsMonitor()
 
-        trainer = Trainer(callbacks=[checkpoint, early_stop, gpu_stats],
-                          min_epochs=min(self.config.epochs, 10),
-                          max_epochs=self.config.epochs,
-                          track_grad_norm=2)
+        trainer = Trainer(
+            #limit_train_batches=10,
+            #limit_val_batches=10,
+            accumulate_grad_batches=self.config.grad_accumulator_steps,
+            enable_pl_optimizer=True,
+            auto_scale_batch_size='binsearch',
+            auto_lr_find=True,
+            benchmark=True,
+            deterministic=True,
+            default_root_dir=self.experiment_dir,
+            precision=16,  # Halves the memory usage allowing for larger batches
+            fast_dev_run=self.config.debug,
+            gpus=1,
+            callbacks=[checkpoint, early_stop, gpu_stats],
+            min_epochs=min(self.config.epochs, 10),
+            max_epochs=self.config.epochs,
+            track_grad_norm=2,
+            logger=pl_loggers.TensorBoardLogger(f'./runs/{self.experiment_name}'))
+
+        # tunes LR and finds max batch_size that will fit in memory
+        trainer.tune(model=self.model, datamodule=self.data_module)
 
         trainer.fit(model=self.model, datamodule=self.data_module)
 
         self.data_module.setup('holdout')
-        trainer.test(datamodule=self.data_module)
+        trainer.test(model=self.model, datamodule=self.data_module)
 
     def run_ensemble(self):
         """ Loads all models and runs ensemble voting on holdout """

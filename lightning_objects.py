@@ -21,11 +21,13 @@ from typing import Optional, Union, List
 # EfficientNet noisy student: https://arxiv.org/pdf/1911.04252.pdf.
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
-    def __init__(self, config: Configuration, criterion,
+    def __init__(self, config: Configuration, criterion, lr, fold,
                  fc_nodes=0, pretrained=False):
         super().__init__()
+        self.log('fold', fold)
         self.config = config
         self.criterion = criterion
+        self.lr = lr
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
         # replace classifier with a Linear in_features->n_classes layer
         in_features = self.model.classifier.in_features
@@ -36,12 +38,18 @@ class LightningModel(LightningModule):
         else:
             self.model.classifier = torch.nn.Linear(in_features, n_classes)
 
+        # freeze
+        for name, param in self.named_parameters():
+            if 'model.classifier' not in name: param.requires_grad = False
+            #print(name, param.requires_grad)
+
+
+
     def forward(self, x):
         return self.model(x)
 
     def configure_optimizers(self):
-        opt = SGD(self.parameters(), self.config.lr,
-                  momentum=self.config.momentum)
+        opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum)
 
         # opt = Adam(self.model.parameters(), self.config.lr,
         # weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
@@ -55,13 +63,13 @@ class LightningModel(LightningModule):
 
     def training_step(self, batch, batch_idx):
         _, loss, _ = self.label_forward_pass(batch)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_loss', loss.detach(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
-        accuracy = FM.accuracy(torch.argmax(predictions, 1).detach().cpu().argmax(1), labels)
-        metrics = {'val_acc': accuracy, 'val_loss': loss}
+        accuracy = FM.accuracy(torch.argmax(predictions, 1), labels)
+        metrics = {'val_acc': accuracy, 'val_loss': loss.detach()}
         self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
         return metrics
 
@@ -72,7 +80,7 @@ class LightningModel(LightningModule):
         return labels, loss, predictions
 
     def test_step(self, batch, batch_idx):
-        pass
+        return self.validation_step(batch, batch_idx)
 
 
 class LightningData(LightningDataModule):
@@ -82,6 +90,7 @@ class LightningData(LightningDataModule):
         self.folds_df = folds_df
         self.holdout_df = holdout_df
         self.config = config
+        self.batch_size = config.train_bs
         self.fold_range = [str(i) for i in range(self.config.fold_num)]
         self.train_transforms = get_train_transforms(self.config.img_size)
         self.valid_transforms = get_valid_transforms(self.config.img_size)
@@ -98,8 +107,8 @@ class LightningData(LightningDataModule):
                                                 transform=self.valid_transforms)
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset, batch_size=self.config.train_bs,
-                          pin_memory=True, shuffle=False, num_workers=self.config.num_workers)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size,
+                          pin_memory=True, shuffle=True, num_workers=self.config.num_workers)
 
     def val_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(self.valid_dataset, batch_size=self.config.valid_bs,

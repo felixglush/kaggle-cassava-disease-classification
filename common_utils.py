@@ -22,18 +22,6 @@ def set_seeds(seed):
     torch.backends.cudnn.benchmark = True
 
 
-# Reads the train.csv file and creates a dataframe out of it, optionally separating a test set that won't be used
-# in any stratified cross validation or training
-def read_csv(filepath, debug, num_samples=None, seed=None):
-    train_df = pd.read_csv(filepath, engine='python')
-
-    if debug or num_samples:
-        n = num_samples if num_samples else 200
-        train_df = train_df.sample(n=n, random_state=seed).reset_index(drop=True)
-
-    return train_df
-
-
 def stratify_split(df, splits, seed, target_col):
     train_folds = df.copy()
     stratifiedFold = StratifiedKFold(n_splits=splits, shuffle=True, random_state=seed)

@@ -1,7 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 import torch
-from model import Model
+from lightning_objects import Model
 
 
 # runs inference on all trained models, averages/majority votes the result

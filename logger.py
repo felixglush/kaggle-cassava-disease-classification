@@ -1,5 +1,4 @@
 from logging import getLogger, INFO, FileHandler,  Formatter,  StreamHandler
-from config import Config
 from datetime import datetime
     
 def init_logger():    

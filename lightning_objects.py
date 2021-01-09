@@ -2,6 +2,7 @@ import sys
 
 import torch
 from pandas import DataFrame
+from torch import Tensor
 from torch.optim import SGD
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
@@ -14,17 +15,21 @@ sys.path.append('../pytorch-image-models')
 import timm  # pytorch-image-models implementations
 
 from pytorch_lightning import LightningModule, LightningDataModule
-from pytorch_lightning.metrics import functional as FM
-from typing import Optional, Union, List
+from pytorch_lightning.metrics import Accuracy
+from typing import Optional, Union, List, Any, Dict
+
+import numpy as np
 
 
 # EfficientNet noisy student: https://arxiv.org/pdf/1911.04252.pdf.
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
-    def __init__(self, config: Configuration, criterion, lr, fold,
-                 fc_nodes=0, pretrained=False):
+    def __init__(self, config: Configuration, criterion, lr=0.1,
+                 fc_nodes=0, pretrained=False, freeze_net=False, freeze_bn=True):
         super().__init__()
-        self.log('fold', fold)
+        self.valid_accuracy = Accuracy()
+        self.test_accuracy = Accuracy()
+        self.test_predictions = []
         self.config = config
         self.criterion = criterion
         self.lr = lr
@@ -38,11 +43,19 @@ class LightningModel(LightningModule):
         else:
             self.model.classifier = torch.nn.Linear(in_features, n_classes)
 
-        # freeze
-        for name, param in self.named_parameters():
-            if 'model.classifier' not in name: param.requires_grad = False
-            #print(name, param.requires_grad)
+        # freeze everything except classifier
 
+        if freeze_net:
+            for name, param in self.named_parameters():
+                if 'model.classifier' not in name: param.requires_grad = False
+                print(name, param.requires_grad)
+
+        # freeze batch norm layers
+        if freeze_bn:
+            for name, module in self.model.named_modules():
+                if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
+                    for p in module.parameters():
+                        p.requires_grad = False
 
 
     def forward(self, x):
@@ -62,16 +75,24 @@ class LightningModel(LightningModule):
         return [opt], [scheduler]
 
     def training_step(self, batch, batch_idx):
-        _, loss, _ = self.label_forward_pass(batch)
-        self.log('train_loss', loss.detach(), on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        return loss
+        labels, loss, predictions = self.label_forward_pass(batch)
+        return {'loss': loss.detach(), 'preds': predictions, 'target': labels}
+
+    def training_step_end(self, outputs):
+        self.log('train_loss', outputs['loss'], on_step=True, prog_bar=True, logger=True)
 
     def validation_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
-        accuracy = FM.accuracy(torch.argmax(predictions, 1), labels)
-        metrics = {'val_acc': accuracy, 'val_loss': loss.detach()}
-        self.log_dict(metrics, on_epoch=True, prog_bar=True, logger=True)
-        return metrics
+        return {'loss': loss.detach(), 'preds': predictions, 'target': labels}
+
+    def validation_step_end(self, outputs):
+        self.valid_accuracy(outputs['preds'], outputs['target'])
+        self.log('val_acc_step', self.valid_accuracy, on_step=True, on_epoch=True, logger=True, prog_bar=True)
+        self.log('val_loss', outputs['loss'], on_step=True, on_epoch=True, logger=True, prog_bar=True)
+
+    def validation_epoch_end(self, outputs: List[Any]) -> None:
+        self.log('val_acc', self.valid_accuracy, prog_bar=True, logger=True)
+        self.valid_accuracy.reset()
 
     def label_forward_pass(self, batch):
         images, labels = batch
@@ -79,13 +100,28 @@ class LightningModel(LightningModule):
         loss = self.criterion(predictions, labels)
         return labels, loss, predictions
 
+    def on_test_epoch_start(self) -> None:
+        self.test_accuracy.reset()
+        self.test_predictions = []
+
     def test_step(self, batch, batch_idx):
-        return self.validation_step(batch, batch_idx)
+        images, labels = batch
+        predictions = self.model(images)
+        return {'preds': predictions, 'target': labels}
+
+    def test_step_end(self, outputs):
+        most_likely = torch.argmax(outputs['preds'], dim=1) # highest preds for each sample in batch
+        self.test_predictions.extend(most_likely.cpu().numpy())
+        self.test_accuracy(most_likely, outputs['target'])
+
+    def on_test_epoch_end(self) -> None:
+        self.log('test_acc', self.test_accuracy.compute(), prog_bar=True, logger=True)
+
 
 
 class LightningData(LightningDataModule):
 
-    def __init__(self, folds_df: DataFrame, holdout_df: DataFrame, config: Configuration):
+    def __init__(self, holdout_df: DataFrame, config: Configuration, folds_df: DataFrame = None, kaggle=False):
         super().__init__()
         self.folds_df = folds_df
         self.holdout_df = holdout_df
@@ -94,10 +130,12 @@ class LightningData(LightningDataModule):
         self.fold_range = [str(i) for i in range(self.config.fold_num)]
         self.train_transforms = get_train_transforms(self.config.img_size)
         self.valid_transforms = get_valid_transforms(self.config.img_size)
+        self.kaggle = kaggle
 
     def setup(self, stage: Optional[str] = None):
-        if stage == 'holdout':
-            self.test_loader = CassavaDataset(self.holdout_df, self.config.train_img_dir, output_label=True,
+        if stage == 'holdout' or stage == 'ensemble_holdout' or stage == 'ensemble_test':
+            self.test_loader = CassavaDataset(self.holdout_df, self.config.train_img_dir,
+                                              output_label=(not self.kaggle),
                                               transform=self.valid_transforms)
         elif stage in self.fold_range:
             train_df, valid_df = get_data_dfs_from_fold(self.folds_df, int(stage))

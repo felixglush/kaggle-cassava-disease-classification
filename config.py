@@ -21,9 +21,9 @@ class Configuration:
         self.inference = True
 
         self.train_bs = 16
-        self.valid_bs = 32
+        self.valid_bs = 64
         self.is_amsgrad = False
-        self.grad_accumulator_steps = 8
+        self.grad_accumulator_steps = 4
         # lr: 0.001285         # adam/adaboost
         self.lr = 0.2  # SGD selected
         self.lr_test = False

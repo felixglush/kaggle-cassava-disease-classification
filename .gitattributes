@@ -47,3 +47,16 @@ trained-models/sgd_frozen_batch_norm_89-25/folds.csv filter=lfs diff=lfs merge=l
 trained-models/exp1_88_Adam/aggregated_output_df.csv filter=lfs diff=lfs merge=lfs -text
 trained-models/sgd_frozen_batch_norm_89-25/tf_efficientnet_b4_ns_fold1.ckpt filter=lfs diff=lfs merge=lfs -text
 trained-models/exp1_88_Adam/tf_efficientnet_b4_ns_fold1.pth filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25 filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/ filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold1-v0.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/experiment_config.json filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/holdout.csv filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold1.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold2.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold2-v0.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold3.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold4.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/folds.csv filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold0.ckpt filter=lfs diff=lfs merge=lfs -text
+trained-models/sgd_only_classifier_tuned_79-25_tune/tf_efficientnet_b4_ns_fold0-v0.ckpt filter=lfs diff=lfs merge=lfs -text

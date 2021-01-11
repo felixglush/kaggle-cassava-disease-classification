@@ -3,7 +3,7 @@ import sys
 import torch
 from pandas import DataFrame
 from torch import Tensor
-from torch.optim import SGD
+from torch.optim import SGD, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from torch.utils.data import DataLoader
 
@@ -16,7 +16,7 @@ import timm  # pytorch-image-models implementations
 
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.metrics import Accuracy
-from typing import Optional, Union, List, Any, Dict
+from typing import Optional, Union, List, Any, Dict, Callable
 
 import numpy as np
 
@@ -25,7 +25,7 @@ import numpy as np
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
     def __init__(self, config: Configuration, criterion, lr=0.1,
-                 fc_nodes=0, pretrained=False, freeze_net=False, freeze_bn=True):
+                 fc_nodes=0, pretrained=False, bn=True, features=False):
         super().__init__()
         self.valid_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
@@ -43,25 +43,23 @@ class LightningModel(LightningModule):
         else:
             self.model.classifier = torch.nn.Linear(in_features, n_classes)
 
-        # freeze everything except classifier
+        self.freeze_layers(bn, features)
 
-        if freeze_net:
-            for name, param in self.named_parameters():
-                if 'model.classifier' not in name: param.requires_grad = False
-                print(name, param.requires_grad)
+    def freeze_layers(self, bn, features):
+        for name, param in self.named_parameters():
+            if 'model.classifier' not in name:
+                param.requires_grad = False if features else True
 
-        # freeze batch norm layers
-        if freeze_bn:
-            for name, module in self.model.named_modules():
-                if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
-                    for p in module.parameters():
-                        p.requires_grad = False
-
+        for name, module in self.model.named_modules():
+            if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
+                for p in module.parameters():
+                    p.requires_grad = False if bn else True
 
     def forward(self, x):
         return self.model(x)
 
     def configure_optimizers(self):
+        print('opt lr', self.lr)
         opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum)
 
         # opt = Adam(self.model.parameters(), self.config.lr,
@@ -74,24 +72,27 @@ class LightningModel(LightningModule):
 
         return [opt], [scheduler]
 
+    def optimizer_step(self, epoch: int = None, batch_idx: int = None, optimizer: Optimizer = None,
+                       optimizer_idx: int = None, optimizer_closure: Optional[Callable] = None, on_tpu: bool = None,
+                       using_native_amp: bool = None, using_lbfgs: bool = None) -> None:
+        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp,
+                               using_lbfgs)
+
     def training_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
-        return {'loss': loss.detach(), 'preds': predictions, 'target': labels}
-
-    def training_step_end(self, outputs):
-        self.log('train_loss', outputs['loss'], on_step=True, prog_bar=True, logger=True)
+        self.log('train_loss', loss, on_step=True, prog_bar=True, logger=True)
+        return {'loss': loss, 'preds': predictions, 'target': labels}
 
     def validation_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
-        return {'loss': loss.detach(), 'preds': predictions, 'target': labels}
+        self.log('val_loss', loss, on_epoch=True, logger=True, prog_bar=True)
+        return {'loss': loss, 'preds': predictions, 'target': labels}
 
     def validation_step_end(self, outputs):
         self.valid_accuracy(outputs['preds'], outputs['target'])
-        self.log('val_acc_step', self.valid_accuracy, on_step=True, on_epoch=True, logger=True, prog_bar=True)
-        self.log('val_loss', outputs['loss'], on_step=True, on_epoch=True, logger=True, prog_bar=True)
 
-    def validation_epoch_end(self, outputs: List[Any]) -> None:
-        self.log('val_acc', self.valid_accuracy, prog_bar=True, logger=True)
+    def on_validation_epoch_end(self) -> None:
+        self.log('val_acc', self.valid_accuracy.compute(), prog_bar=True, logger=True)
         self.valid_accuracy.reset()
 
     def label_forward_pass(self, batch):
@@ -110,13 +111,12 @@ class LightningModel(LightningModule):
         return {'preds': predictions, 'target': labels}
 
     def test_step_end(self, outputs):
-        most_likely = torch.argmax(outputs['preds'], dim=1) # highest preds for each sample in batch
+        most_likely = torch.argmax(outputs['preds'], dim=1)  # highest preds for each sample in batch
         self.test_predictions.extend(most_likely.cpu().numpy())
         self.test_accuracy(most_likely, outputs['target'])
 
     def on_test_epoch_end(self) -> None:
         self.log('test_acc', self.test_accuracy.compute(), prog_bar=True, logger=True)
-
 
 
 class LightningData(LightningDataModule):

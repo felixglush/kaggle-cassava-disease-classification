@@ -25,7 +25,7 @@ class Configuration:
         self.is_amsgrad = False
         self.grad_accumulator_steps = 4
         # lr: 0.001285         # adam/adaboost
-        self.lr = 0.2  # SGD selected
+        self.lr = 0.22  # SGD selected
         self.lr_test = False
         self.max_lr = 0.9
         self.min_lr = 1e-4

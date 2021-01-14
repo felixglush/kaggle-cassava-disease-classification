@@ -1,6 +1,5 @@
 class Configuration:
     def __init__(self):
-
         self.seed = 123
         self.data_dir = './data'
         self.train_img_dir = './data/train_images'
@@ -25,28 +24,38 @@ class Configuration:
         self.is_amsgrad = False
         self.grad_accumulator_steps = 4
         # lr: 0.001285         # adam/adaboost
-        self.lr = 0.22  # SGD selected
+        # self.lr = 0.22  # SGD selected
         self.lr_test = False
-        self.max_lr = 0.9
+        self.lr = 3e-4  #
+        self.max_lr = 0.8
         self.min_lr = 1e-4
         self.weight_decay = 0.000125  # Adam
         self.momentum = 0.9  # SGD
-        self.loss_patience = 6  # for early stopping
+        self.patience = 6  # for early stopping
         self.max_norm_grad = 1.
         self.fold_num = 5
-        self.epochs = 25
+        self.epochs = 15
+
+        # loss function params
+        self.t1 = 0.3
+        self.t2 = 1.
+        self.smoothing = 0.05
+
+        self.tta = True
+        self.tta_prediction_count = 4
+        self.new_model_per_fold = False
+        self.stochastic_weight_averaging = False
 
         # lr scheduler settings
         # supported: ['ReduceLROnPlateau', 'CosineAnnealingLR',  'CosineAnnealingWarmRestarts',  'StepLR']
         self.scheduler = 'CosineAnnealingWarmRestarts'
         self.factor = 0.2  # ReduceLROnPlateau
-        self.patience = 4  # ReduceLROnPlateau
         self.gamma = 1.025  # StepLR for range test
         self.step_size_lr = 1  # StepLR for range test
         self.eps = 1e-6  # ReduceLROnPlateau
-        self.T_max = 10  # CosineAnnealingLR
+        self.T_max = self.epochs  # CosineAnnealingLR
         self.T_mult = 2  # CosineAnnealingWarmRestarts
         self.T_0 = 10  # CosineAnnealingWarmRestarts
         self.wait_epochs_schd = 2  # how many epochs to wait until starting lr schedule
         self.schedule_verbosity = False
-        self.num_workers = 0
+        self.num_workers = 5

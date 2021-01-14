@@ -3,12 +3,15 @@ import sys
 import torch
 from pandas import DataFrame
 from torch import Tensor
-from torch.optim import SGD, Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim import SGD, Optimizer, Adam, AdamW
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, OneCycleLR
+from torch.optim.swa_utils import AveragedModel, SWALR
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import WeightedRandomSampler
 
+from adabound import AdaBound
 from cassava_dataset import CassavaDataset
-from common_utils import get_train_transforms, get_valid_transforms, get_data_dfs_from_fold
+from common_utils import get_train_transforms, get_valid_transforms
 from config import Configuration
 
 sys.path.append('../pytorch-image-models')
@@ -16,6 +19,7 @@ import timm  # pytorch-image-models implementations
 
 from pytorch_lightning import LightningModule, LightningDataModule
 from pytorch_lightning.metrics import Accuracy
+from pytorch_lightning.metrics.functional.classification import accuracy
 from typing import Optional, Union, List, Any, Dict, Callable
 
 import numpy as np
@@ -24,16 +28,20 @@ import numpy as np
 # EfficientNet noisy student: https://arxiv.org/pdf/1911.04252.pdf.
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
-    def __init__(self, config: Configuration, criterion, lr=0.1,
-                 fc_nodes=0, pretrained=False, bn=True, features=False):
+    def __init__(self, config: Configuration, criterion, len_trainloader=0, lr=0.1,
+                 fc_nodes=0, pretrained=False, bn=True, features=False, swa=False):
         super().__init__()
+        self.len_dataloader = len_trainloader
         self.valid_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
         self.test_predictions = []
         self.config = config
         self.criterion = criterion
         self.lr = lr
+        # self.tta_prediction_count = self.config.tta_prediction_count
+
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
+
         # replace classifier with a Linear in_features->n_classes layer
         in_features = self.model.classifier.in_features
         n_classes = self.config.num_classes
@@ -44,6 +52,9 @@ class LightningModel(LightningModule):
             self.model.classifier = torch.nn.Linear(in_features, n_classes)
 
         self.freeze_layers(bn, features)
+
+        self.swa = swa
+        if self.swa: self.swa_model = AveragedModel(self.model, device=torch.device('cuda'))
 
     def freeze_layers(self, bn, features):
         for name, param in self.named_parameters():
@@ -59,27 +70,29 @@ class LightningModel(LightningModule):
         return self.model(x)
 
     def configure_optimizers(self):
-        print('opt lr', self.lr)
-        opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum)
+        # opt = AdamW(self.parameters(), lr=self.lr)
+        # opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
+        # opt = Adam(self.model.parameters(), self.lr,
+        #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
+        opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-3)
 
-        # opt = Adam(self.model.parameters(), self.config.lr,
-        # weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
-        # opt = AdaBound(self.model.parameters(), self.config.lr)
-
-        scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.config.T_0,
-                                                T_mult=self.config.T_mult,
-                                                eta_min=self.config.min_lr)
+        if self.swa:
+            scheduler = SWALR(opt, swa_lr=0.05, anneal_epochs=5, anneal_strategy='linear')
+        else:
+            # scheduler = OneCycleLR(opt,
+            #                        max_lr=self.lr,
+            #                        steps_per_epoch=self.len_dataloader,
+            #                        epochs=self.config.epochs)
+            scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.config.T_0,
+                                                    T_mult=self.config.T_mult,
+                                                    eta_min=self.config.min_lr)
+        scheduler = {"scheduler": scheduler, "interval": "step"}
 
         return [opt], [scheduler]
 
-    def optimizer_step(self, epoch: int = None, batch_idx: int = None, optimizer: Optimizer = None,
-                       optimizer_idx: int = None, optimizer_closure: Optional[Callable] = None, on_tpu: bool = None,
-                       using_native_amp: bool = None, using_lbfgs: bool = None) -> None:
-        super().optimizer_step(epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, on_tpu, using_native_amp,
-                               using_lbfgs)
-
     def training_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
+        if self.swa: self.swa_model.update_parameters(self.model)
         self.log('train_loss', loss, on_step=True, prog_bar=True, logger=True)
         return {'loss': loss, 'preds': predictions, 'target': labels}
 
@@ -95,6 +108,10 @@ class LightningModel(LightningModule):
         self.log('val_acc', self.valid_accuracy.compute(), prog_bar=True, logger=True)
         self.valid_accuracy.reset()
 
+    def on_train_end(self) -> None:
+        print('on train end, updating bn stats')
+        torch.optim.swa_utils.update_bn(self.train_dataloader(), self.swa_model, device=torch.device('cuda'))
+
     def label_forward_pass(self, batch):
         images, labels = batch
         predictions = self.model(images)
@@ -108,6 +125,8 @@ class LightningModel(LightningModule):
     def test_step(self, batch, batch_idx):
         images, labels = batch
         predictions = self.model(images)
+        self.log('test_acc_weighted', accuracy(predictions, labels, self.config.num_classes, class_reduction='none'),
+                 on_epoch=True)
         return {'preds': predictions, 'target': labels}
 
     def test_step_end(self, outputs):
@@ -138,15 +157,38 @@ class LightningData(LightningDataModule):
                                               output_label=(not self.kaggle),
                                               transform=self.valid_transforms)
         elif stage in self.fold_range:
-            train_df, valid_df = get_data_dfs_from_fold(self.folds_df, int(stage))
-            self.train_dataset = CassavaDataset(train_df, self.config.train_img_dir, output_label=True,
-                                                transform=self.train_transforms)
-            self.valid_dataset = CassavaDataset(valid_df, self.config.train_img_dir, output_label=True,
-                                                transform=self.valid_transforms)
+            self.get_data_dfs_from_fold(self.folds_df, int(stage))
+            self.create_weighted_sampler(self.train_df)
+
+            self.train_dataset = CassavaDataset(self.train_df, self.config.train_img_dir,
+                                                output_label=True, transform=self.train_transforms)
+            self.valid_dataset = CassavaDataset(self.valid_df, self.config.train_img_dir,
+                                                output_label=True, transform=self.valid_transforms)
+
+    def get_data_dfs_from_fold(self, df, fold: int):
+        train_idx = df[df['fold'] != fold].index
+        valid_idx = df[df['fold'] == fold].index
+        # since we are selecting rows, the index will be non contiguous #s so reset
+        self.train_df = df.iloc[train_idx].reset_index(drop=True)
+        self.valid_df = df.iloc[valid_idx].reset_index(drop=True)
+
+    def create_weighted_sampler(self, train_df):
+        train_target = train_df.label.values
+        class_sample_count = np.unique(train_target, return_counts=True)[1]
+        print("Class sample counts", class_sample_count)
+        class_sample_count[0] *= 3
+        class_sample_count[1] *= 2
+        class_sample_count[2] *= 2.3
+        class_sample_count[4] *= 2.7
+        print("After class sample counts", class_sample_count)
+        weight = 1. / class_sample_count
+        samples_weight = weight[train_target]  # unpacks
+        samples_weight = torch.from_numpy(samples_weight)
+        self.sampler = WeightedRandomSampler(samples_weight, len(samples_weight), replacement=True)
 
     def train_dataloader(self) -> DataLoader:
-        return DataLoader(self.train_dataset, batch_size=self.batch_size,
-                          pin_memory=True, shuffle=True, num_workers=self.config.num_workers)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, sampler=self.sampler,
+                          pin_memory=True, shuffle=False, num_workers=self.config.num_workers)
 
     def val_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
         return DataLoader(self.valid_dataset, batch_size=self.config.valid_bs,

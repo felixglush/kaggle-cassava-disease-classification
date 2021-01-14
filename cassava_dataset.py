@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 import torch
 import numpy as np
 import cv2
+
 class CassavaDataset(Dataset):
     def __init__(self, df, data_root_dir, transform=None, output_label=False):
         self.df = df.reset_index(drop=True).copy()

@@ -64,13 +64,3 @@ def get_valid_transforms(image_size):
         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], max_pixel_value=255.0, p=1.0),
         ToTensorV2(p=1.0),
     ], p=1.)
-
-
-# df: stratified
-def get_data_dfs_from_fold(df, fold: int):
-    train_idx = df[df['fold'] != fold].index
-    valid_idx = df[df['fold'] == fold].index
-    # since we are selecting rows, the index will be non contiguous #s so reset
-    train_df = df.iloc[train_idx].reset_index(drop=True)
-    valid_df = df.iloc[valid_idx].reset_index(drop=True)
-    return train_df, valid_df

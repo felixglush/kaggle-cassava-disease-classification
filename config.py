@@ -24,27 +24,24 @@ class Configuration:
         self.is_amsgrad = False
         self.grad_accumulator_steps = 4
         # lr: 0.001285         # adam/adaboost
-        # self.lr = 0.22  # SGD selected
         self.lr_test = False
-        self.lr = 3e-4  #
+        self.lr = 0.0015 # SGD
         self.max_lr = 0.8
-        self.min_lr = 1e-4
+        self.min_lr = 1e-3
         self.weight_decay = 0.000125  # Adam
         self.momentum = 0.9  # SGD
-        self.patience = 6  # for early stopping
+        self.patience = 8  # for early stopping
         self.max_norm_grad = 1.
         self.fold_num = 5
-        self.epochs = 15
+        self.epochs = 7
 
         # loss function params
         self.t1 = 0.3
         self.t2 = 1.
         self.smoothing = 0.05
 
-        self.tta = True
+        self.tta = False
         self.tta_prediction_count = 4
-        self.new_model_per_fold = False
-        self.stochastic_weight_averaging = False
 
         # lr scheduler settings
         # supported: ['ReduceLROnPlateau', 'CosineAnnealingLR',  'CosineAnnealingWarmRestarts',  'StepLR']

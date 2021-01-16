@@ -1,0 +1,79 @@
+bn: true
+config: !!python/object/apply:types.SimpleNamespace
+  state:
+    T_0: 10
+    T_max: 7
+    T_mult: 2
+    data_csv: ./data/train.csv
+    data_dir: ./data
+    debug: false
+    epochs: 7
+    eps: 1.0e-06
+    factor: 0.2
+    fold_num: 5
+    gamma: 1.025
+    grad_accumulator_steps: 4
+    hyperparameter_tuning: true
+    img_size: 512
+    inference: true
+    is_amsgrad: false
+    lr: 0.15
+    lr_test: true
+    max_lr: 0.8
+    max_norm_grad: 1.0
+    min_lr: 0.001
+    model_arch: efficientnet_b3a
+    momentum: 0.9
+    num_classes: 5
+    num_workers: 5
+    patience: 8
+    print_every: 10
+    save_dir: ./trained-models
+    schedule_verbosity: false
+    scheduler: CosineAnnealingWarmRestarts
+    seed: 123
+    smoothing: 0.05
+    step_size_lr: 1
+    t1: 0.3
+    t2: 1.0
+    target_col: label
+    test_img_dir: ./data/test_images
+    train: true
+    train_bs: 16
+    train_img_dir: ./data/train_images
+    tta: false
+    tta_prediction_count: 4
+    valid_bs: 64
+    wait_epochs_schd: 2
+    weight_decay: 0.000125
+criterion: !!python/object:loss_functions.BiTemperedLoss
+  _backward_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _buffers: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _forward_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _load_state_dict_pre_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  _modules: !!python/object/apply:collections.OrderedDict
+  - []
+  _non_persistent_buffers_set: !!set {}
+  _parameters: !!python/object/apply:collections.OrderedDict
+  - []
+  _state_dict_hooks: !!python/object/apply:collections.OrderedDict
+  - []
+  dim: -1
+  num_classes: 5
+  reduction: mean
+  smoothing: 0.05
+  t1: 0.3
+  t2: 1.0
+  training: true
+fc_nodes: 0
+features: false
+len_trainloader: 910
+lr: 0.15
+pretrained: true
+tta: false

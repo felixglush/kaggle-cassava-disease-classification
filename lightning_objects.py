@@ -2,16 +2,14 @@ import sys
 
 import torch
 from pandas import DataFrame
-from torch import Tensor
 from torch.optim import SGD, Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, OneCycleLR
-from torch.optim.swa_utils import AveragedModel, SWALR
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
 
 from adabound import AdaBound
 from cassava_dataset import CassavaDataset
-from common_utils import get_train_transforms, get_valid_transforms
+from utils import get_train_transforms, get_valid_transforms
 from config import Configuration
 
 sys.path.append('../pytorch-image-models')
@@ -29,7 +27,7 @@ import numpy as np
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
     def __init__(self, config: Configuration, criterion, len_trainloader=0, lr=0.1,
-                 fc_nodes=0, pretrained=False, bn=True, features=False, swa=False):
+                 fc_nodes=0, pretrained=False, bn=True, features=False, tta=False):
         super().__init__()
         self.len_dataloader = len_trainloader
         self.valid_accuracy = Accuracy()
@@ -38,61 +36,59 @@ class LightningModel(LightningModule):
         self.config = config
         self.criterion = criterion
         self.lr = lr
-        # self.tta_prediction_count = self.config.tta_prediction_count
+        if tta:
+            self.tta = tta
+            self.tta_prediction_count = self.config.tta_prediction_count
 
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
 
         # replace classifier with a Linear in_features->n_classes layer
-        in_features = self.model.classifier.in_features
-        n_classes = self.config.num_classes
-        if fc_nodes:
-            self.model.classifier = torch.nn.Linear(in_features, fc_nodes)
-            self.model.fc2 = torch.nn.Linear(fc_nodes, n_classes)
-        else:
-            self.model.classifier = torch.nn.Linear(in_features, n_classes)
+        if config.model_arch == 'tf_efficientnet_b4_ns':
+            self.model.classifier = torch.nn.Linear(self.model.classifier.in_features, self.config.num_classes)
+        elif config.model_arch == 'seresnet50':
+            self.model.fc = torch.nn.Linear(self.model.fc.in_features, self.config.num_classes)
+
 
         self.freeze_layers(bn, features)
-
-        self.swa = swa
-        if self.swa: self.swa_model = AveragedModel(self.model, device=torch.device('cuda'))
+        self.save_hyperparameters()
 
     def freeze_layers(self, bn, features):
-        for name, param in self.named_parameters():
-            if 'model.classifier' not in name:
-                param.requires_grad = False if features else True
+        for name, module in self.model.named_modules():
+            if not isinstance(module, torch.nn.modules.Linear):
+                for p in module.parameters():
+                    p.requires_grad = False if features else True
 
         for name, module in self.model.named_modules():
             if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
                 for p in module.parameters():
                     p.requires_grad = False if bn else True
 
+        for name, p in self.model.named_parameters():
+            print(name, p.requires_grad)
+
     def forward(self, x):
         return self.model(x)
 
     def configure_optimizers(self):
         # opt = AdamW(self.parameters(), lr=self.lr)
-        # opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
+        opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
         # opt = Adam(self.model.parameters(), self.lr,
         #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
-        opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-3)
+        # opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
 
-        if self.swa:
-            scheduler = SWALR(opt, swa_lr=0.05, anneal_epochs=5, anneal_strategy='linear')
-        else:
-            # scheduler = OneCycleLR(opt,
-            #                        max_lr=self.lr,
-            #                        steps_per_epoch=self.len_dataloader,
-            #                        epochs=self.config.epochs)
-            scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.config.T_0,
-                                                    T_mult=self.config.T_mult,
-                                                    eta_min=self.config.min_lr)
+        # scheduler = OneCycleLR(opt,
+        #                        max_lr=self.lr,
+        #                        steps_per_epoch=self.len_dataloader,
+        #                        epochs=self.config.epochs * 2)
+        scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.len_dataloader,
+                                                T_mult=self.config.T_mult,
+                                                eta_min=self.config.min_lr)
         scheduler = {"scheduler": scheduler, "interval": "step"}
 
         return [opt], [scheduler]
 
     def training_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
-        if self.swa: self.swa_model.update_parameters(self.model)
         self.log('train_loss', loss, on_step=True, prog_bar=True, logger=True)
         return {'loss': loss, 'preds': predictions, 'target': labels}
 
@@ -107,10 +103,6 @@ class LightningModel(LightningModule):
     def on_validation_epoch_end(self) -> None:
         self.log('val_acc', self.valid_accuracy.compute(), prog_bar=True, logger=True)
         self.valid_accuracy.reset()
-
-    def on_train_end(self) -> None:
-        print('on train end, updating bn stats')
-        torch.optim.swa_utils.update_bn(self.train_dataloader(), self.swa_model, device=torch.device('cuda'))
 
     def label_forward_pass(self, batch):
         images, labels = batch
@@ -165,7 +157,7 @@ class LightningData(LightningDataModule):
             self.valid_dataset = CassavaDataset(self.valid_df, self.config.train_img_dir,
                                                 output_label=True, transform=self.valid_transforms)
 
-    def get_data_dfs_from_fold(self, df, fold: int):
+    def get_data_dfs_from_fold(self, df: DataFrame, fold: int):
         train_idx = df[df['fold'] != fold].index
         valid_idx = df[df['fold'] == fold].index
         # since we are selecting rows, the index will be non contiguous #s so reset

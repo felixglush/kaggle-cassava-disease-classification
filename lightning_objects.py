@@ -43,46 +43,46 @@ class LightningModel(LightningModule):
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
 
         # replace classifier with a Linear in_features->n_classes layer
-        in_features = self.model.classifier.in_features
-        n_classes = self.config.num_classes
-        if fc_nodes:
-            self.model.classifier = torch.nn.Linear(in_features, fc_nodes)
-            self.model.fc2 = torch.nn.Linear(fc_nodes, n_classes)
-        else:
-            self.model.classifier = torch.nn.Linear(in_features, n_classes)
+        if config.model_arch == 'tf_efficientnet_b4_ns':
+            self.model.classifier = torch.nn.Linear(self.model.classifier.in_features, self.config.num_classes)
+        elif config.model_arch == 'seresnet50':
+            self.model.fc = torch.nn.Linear(self.model.fc.in_features, self.config.num_classes)
+
 
         self.freeze_layers(bn, features)
-
         self.save_hyperparameters()
 
-
     def freeze_layers(self, bn, features):
-        for name, param in self.named_parameters():
-            if 'model.classifier' not in name:
-                param.requires_grad = False if features else True
+        for name, module in self.model.named_modules():
+            if not isinstance(module, torch.nn.modules.Linear):
+                for p in module.parameters():
+                    p.requires_grad = False if features else True
 
         for name, module in self.model.named_modules():
             if isinstance(module, torch.nn.modules.batchnorm.BatchNorm2d):
                 for p in module.parameters():
                     p.requires_grad = False if bn else True
 
+        for name, p in self.model.named_parameters():
+            print(name, p.requires_grad)
+
     def forward(self, x):
         return self.model(x)
 
     def configure_optimizers(self):
         # opt = AdamW(self.parameters(), lr=self.lr)
-        # opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
+        opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
         # opt = Adam(self.model.parameters(), self.lr,
         #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
-        opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
+        # opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
 
-        scheduler = OneCycleLR(opt,
-                               max_lr=self.lr,
-                               steps_per_epoch=self.len_dataloader,
-                               epochs=self.config.epochs*2)
-        # scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.len_dataloader,
-        #                                         T_mult=self.config.T_mult,
-        #                                         eta_min=self.config.min_lr)
+        # scheduler = OneCycleLR(opt,
+        #                        max_lr=self.lr,
+        #                        steps_per_epoch=self.len_dataloader,
+        #                        epochs=self.config.epochs * 2)
+        scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.len_dataloader,
+                                                T_mult=self.config.T_mult,
+                                                eta_min=self.config.min_lr)
         scheduler = {"scheduler": scheduler, "interval": "step"}
 
         return [opt], [scheduler]
@@ -163,7 +163,6 @@ class LightningData(LightningDataModule):
         # since we are selecting rows, the index will be non contiguous #s so reset
         self.train_df = df.iloc[train_idx].reset_index(drop=True)
         self.valid_df = df.iloc[valid_idx].reset_index(drop=True)
-
 
     def create_weighted_sampler(self, train_df):
         train_target = train_df.label.values

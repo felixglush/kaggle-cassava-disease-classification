@@ -29,6 +29,9 @@ Ideas to try:
 15. Learning rate range plots for LR selection [done]
 
 To do:
-1. Test time augmentation
-2. fmix, cutmix
-3. Average of model weights
+- assymetric loss, jsd loss
+- Test time augmentation
+- fmix, cutmix
+- metric learning
+- other models [wip]
+- Average of model weight [done] 

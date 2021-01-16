@@ -68,7 +68,7 @@ def get_valid_transforms(image_size):
     ], p=1.)
 
 
-def average_model_state(checkpoint_fnames, save_location):
+def average_model_state(checkpoint_fnames):
     avg_state_dict = {}
     avg_count = {}
     for ckpt in checkpoint_fnames:

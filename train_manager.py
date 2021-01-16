@@ -49,10 +49,11 @@ class TrainManager:
         self.kaggle = kaggle
 
     def run(self):
+        self.config.lr = 0.225
         assert self.folds_df is not None, 'Folds dataframe None'
         print(f'folds_df len {len(self.folds_df)}, holdout_df len {len(self.holdout_df)}')
 
-        # starting_fold = self.get_restart_params()  # defaults to 0 and None checkpoint filepath.
+        #starting_fold = self.get_restart_params()  # defaults to 0 and None checkpoint filepath.
         end_fold = self.config.fold_num  # this should be equal to len(self.finetuning_model_fnames) but just for sanity...
 
         if self.finetune_model_fnames:
@@ -100,7 +101,7 @@ class TrainManager:
             # 'profiler': 'simple'
         }
 
-        for fold in range(4, end_fold):
+        for fold in range(1, end_fold):
             print('Training fold', fold)
             self.current_fold = fold
 
@@ -158,12 +159,11 @@ class TrainManager:
 
     def test(self, tta, weight_avg, mode='vote'):
         """ Loads all models and runs ensemble voting on holdout """
-        self.ensemble_data_module = LightningData(folds_df=None, holdout_df=self.holdout_df,
-                                                  config=self.config, kaggle=self.kaggle)
-        self.ensemble_data_module.setup('ensemble_holdout' if not self.kaggle else 'ensemble_test')
+        self.test_data_module = LightningData(folds_df=None, holdout_df=self.holdout_df,
+                                              config=self.config, kaggle=self.kaggle)
+        self.test_data_module.setup('ensemble_holdout' if not self.kaggle else 'ensemble_test')
 
-        testing_model = LightningModel(config=self.config, criterion=None,
-                                       pretrained=True, lr=self.config.lr, tta=tta)
+        testing_model = LightningModel(config=self.config, criterion=None, tta=tta)
         lit_tester = Trainer(
             default_root_dir=self.experiment_dir,
             precision=16,
@@ -201,5 +201,5 @@ class TrainManager:
 
     def test_model(self, all_model_predictions, state_dict, lit_tester, testing_model):
         testing_model.load_state_dict(state_dict=state_dict)
-        lit_tester.test(testing_model, datamodule=self.ensemble_data_module)
+        lit_tester.test(testing_model, datamodule=self.test_data_module)
         all_model_predictions.append(testing_model.test_predictions)

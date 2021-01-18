@@ -1,0 +1,53 @@
+bn: true
+config: !!python/object/apply:types.SimpleNamespace
+  state:
+    T_0: 10
+    T_max: 10
+    T_mult: 2
+    data_csv: ./data/train.csv
+    data_dir: ./data
+    debug: false
+    epochs: 15
+    eps: 1.0e-06
+    factor: 0.2
+    fold_num: 5
+    gamma: 1.025
+    grad_accumulator_steps: 4
+    hyperparameter_tuning: true
+    img_size: 512
+    inference: true
+    is_amsgrad: false
+    lr: 0.0003
+    lr_test: false
+    max_lr: 0.9
+    max_norm_grad: 1.0
+    min_lr: 0.0001
+    model_arch: tf_efficientnet_b4_ns
+    momentum: 0.9
+    num_classes: 5
+    num_workers: 5
+    patience: 6
+    print_every: 10
+    save_dir: ./trained-models
+    schedule_verbosity: false
+    scheduler: CosineAnnealingWarmRestarts
+    seed: 123
+    smoothing: 0.05
+    step_size_lr: 1
+    t1: 0.3
+    t2: 1.0
+    target_col: label
+    test_img_dir: ./data/test_images
+    train: true
+    train_bs: 16
+    train_img_dir: ./data/train_images
+    valid_bs: 64
+    wait_epochs_schd: 2
+    weight_decay: 0.000125
+criterion: null
+fc_nodes: 0
+features: false
+len_trainloader: 0
+lr: 0.1
+pretrained: false
+tta: 4

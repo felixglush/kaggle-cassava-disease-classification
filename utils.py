@@ -68,6 +68,16 @@ def get_valid_transforms(image_size):
     ], p=1.)
 
 
+def get_tta_transforms(image_size):
+    return Compose([
+        CenterCrop(image_size, image_size, p=1.),
+        Resize(image_size, image_size),
+        HorizontalFlip(p=0.5),
+        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], max_pixel_value=255.0, p=1.0),
+        ToTensorV2(p=1.0),
+    ], p=1.)
+
+
 def average_model_state(checkpoint_fnames):
     avg_state_dict = {}
     avg_count = {}

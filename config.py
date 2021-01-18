@@ -10,8 +10,9 @@ class Configuration:
         self.img_size = 512
         self.print_every = 10
 
-        # self.model_arch = 'tf_efficientnet_b4_ns'
-        self.model_arch = 'seresnet50'
+        self.model_arch = 'tf_efficientnet_b4_ns'
+        # self.model_arch = 'efficientnet_b3a'
+        # self.model_arch = 'seresnet50'
         # run settings
         self.hyperparameter_tuning = True
         self.debug = False
@@ -32,26 +33,16 @@ class Configuration:
         self.patience = 8  # for early stopping
         self.max_norm_grad = 1.
         self.fold_num = 5
-        self.epochs = 7
+        self.epochs = 8
 
         # loss function params
-        self.t1 = 0.3
+        self.t1 = 0.8
         self.t2 = 1.
         self.smoothing = 0.05
 
-        self.tta = False
-        self.tta_prediction_count = 4
-
         # lr scheduler settings
-        # supported: ['ReduceLROnPlateau', 'CosineAnnealingLR',  'CosineAnnealingWarmRestarts',  'StepLR']
-        self.scheduler = 'CosineAnnealingWarmRestarts'
-        self.factor = 0.2  # ReduceLROnPlateau
-        self.gamma = 1.025  # StepLR for range test
-        self.step_size_lr = 1  # StepLR for range test
-        self.eps = 1e-6  # ReduceLROnPlateau
         self.T_max = self.epochs  # CosineAnnealingLR
         self.T_mult = 2  # CosineAnnealingWarmRestarts
         self.T_0 = 10  # CosineAnnealingWarmRestarts
-        self.wait_epochs_schd = 2  # how many epochs to wait until starting lr schedule
         self.schedule_verbosity = False
         self.num_workers = 5

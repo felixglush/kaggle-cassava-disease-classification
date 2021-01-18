@@ -12,7 +12,6 @@ from config import Configuration
 from lightning_objects import LightningModel, LightningData
 from loss_functions import LabelSmoothingLoss, BiTemperedLoss
 from pytorch_lightning.metrics.functional import confusion_matrix
-
 from utils import average_model_state
 
 
@@ -49,11 +48,10 @@ class TrainManager:
         self.kaggle = kaggle
 
     def run(self):
-        self.config.lr = 0.225
         assert self.folds_df is not None, 'Folds dataframe None'
         print(f'folds_df len {len(self.folds_df)}, holdout_df len {len(self.holdout_df)}')
 
-        #starting_fold = self.get_restart_params()  # defaults to 0 and None checkpoint filepath.
+        starting_fold = self.get_restart_params()  # defaults to 0 and None checkpoint filepath.
         end_fold = self.config.fold_num  # this should be equal to len(self.finetuning_model_fnames) but just for sanity...
 
         if self.finetune_model_fnames:
@@ -101,7 +99,7 @@ class TrainManager:
             # 'profiler': 'simple'
         }
 
-        for fold in range(1, end_fold):
+        for fold in range(starting_fold, end_fold):
             print('Training fold', fold)
             self.current_fold = fold
 
@@ -151,7 +149,7 @@ class TrainManager:
         elif self.finetune:
             checkpoint_filename = self.finetune_model_fnames[self.current_fold]
             print('Tuning', checkpoint_filename)
-            # load the weights, not the state. we're training from epoch 0.
+            # load the weights, not the checkpoint state. we're training from epoch 0.
             self.lit_model.load_state_dict(state_dict=torch.load(checkpoint_filename)['state_dict'])
 
         self.lit_trainer.tune(model=self.lit_model, datamodule=self.data_module)  # optimal LR or max batch search
@@ -160,7 +158,7 @@ class TrainManager:
     def test(self, tta, weight_avg, mode='vote'):
         """ Loads all models and runs ensemble voting on holdout """
         self.test_data_module = LightningData(folds_df=None, holdout_df=self.holdout_df,
-                                              config=self.config, kaggle=self.kaggle)
+                                              config=self.config, kaggle=self.kaggle, tta=tta)
         self.test_data_module.setup('ensemble_holdout' if not self.kaggle else 'ensemble_test')
 
         testing_model = LightningModel(config=self.config, criterion=None, tta=tta)
@@ -178,15 +176,16 @@ class TrainManager:
         model_filenames = glob.glob(self.experiment_dir + '/*fold*.ckpt')
         all_model_predictions = []
         if weight_avg:
-            avg_state_dict = average_model_state(model_filenames, self.experiment_dir)
-            self.test_model(all_model_predictions, avg_state_dict, lit_tester, testing_model)
+            avg_state_dict = average_model_state(model_filenames)
+            self.test_model(all_model_predictions, avg_state_dict, lit_tester, testing_model, 0, tta)
             self.final_test_predictions = np.array(all_model_predictions).flatten()
         else:
-            for filename in model_filenames:
+            for model_i, filename in enumerate(model_filenames):
                 ckpt = torch.load(filename)
-                self.test_model(all_model_predictions, ckpt['state_dict'], lit_tester, testing_model)
+                self.test_model(all_model_predictions, ckpt['state_dict'], lit_tester, testing_model, model_i, tta)
             all_model_predictions = np.array(all_model_predictions)
 
+            # reduce ensemble predictions
             if mode == 'avg':
                 self.final_test_predictions = np.round(np.mean(all_model_predictions, axis=0), decimals=0)
             elif mode == 'vote':
@@ -198,8 +197,25 @@ class TrainManager:
                 target=torch.tensor(self.holdout_df.label.values, dtype=torch.int),
                 num_classes=self.config.num_classes,
                 normalize='true')
+        del all_model_predictions
 
-    def test_model(self, all_model_predictions, state_dict, lit_tester, testing_model):
+    def test_model(self, all_model_predictions, state_dict, lit_tester, testing_model, model_i, tta, tta_mode='vote'):
         testing_model.load_state_dict(state_dict=state_dict)
-        lit_tester.test(testing_model, datamodule=self.test_data_module)
-        all_model_predictions.append(testing_model.test_predictions)
+        if tta > 0:
+            tta_predictions = []
+            for i in range(tta):
+                print(f'model # {model_i}, tta # {i}')
+                lit_tester.test(testing_model, datamodule=self.test_data_module)
+                tta_predictions.append(testing_model.test_predictions)
+            reduced_tta_predictions = []
+            # reduce ensemble predictions
+            if tta_mode == 'avg':
+                reduced_tta_predictions = np.round(np.mean(tta_predictions, axis=0), decimals=0)
+            elif tta_mode == 'vote':
+                reduced_tta_predictions = stats.mode(tta_predictions, axis=0)[0].flatten()
+            all_model_predictions.append(reduced_tta_predictions)
+            del reduced_tta_predictions
+        else:
+            print(f'normal inference on model {model_i}')
+            lit_tester.test(testing_model, datamodule=self.test_data_module)
+            all_model_predictions.append(testing_model.test_predictions)

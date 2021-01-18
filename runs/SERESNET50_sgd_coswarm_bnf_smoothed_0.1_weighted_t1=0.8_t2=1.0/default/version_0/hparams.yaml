@@ -1,0 +1,50 @@
+bn: true
+config: !!python/object/apply:types.SimpleNamespace
+  state:
+    T_0: 10
+    T_max: 7
+    T_mult: 2
+    data_csv: ./data/train.csv
+    data_dir: ./data
+    debug: false
+    epochs: 7
+    eps: 1.0e-06
+    factor: 0.2
+    fold_num: 5
+    grad_accumulator_steps: 4
+    hyperparameter_tuning: true
+    img_size: 512
+    inference: true
+    is_amsgrad: false
+    lr: 0.02
+    lr_test: true
+    max_lr: 0.8
+    max_norm_grad: 1.0
+    min_lr: 0.001
+    model_arch: seresnet50
+    momentum: 0.9
+    num_classes: 5
+    num_workers: 5
+    patience: 8
+    print_every: 10
+    schedule_verbosity: false
+    seed: 123
+    smoothing: 0.1
+    t1: 0.8
+    t2: 1.0
+    target_col: label
+    test_img_dir: ./data/test_images
+    train: true
+    train_bs: 16
+    train_img_dir: ./data/train_images
+    tta: false
+    tta_prediction_count: 4
+    valid_bs: 64
+    weight_decay: 0.000125
+criterion: null
+fc_nodes: 0
+features: false
+len_trainloader: 0
+lr: 0.1
+pretrained: false
+tta: false

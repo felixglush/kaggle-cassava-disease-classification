@@ -2,6 +2,7 @@ import sys
 
 import torch
 from pandas import DataFrame
+from torch.nn import Dropout, Sequential, Linear
 from torch.optim import SGD, Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, OneCycleLR
 from torch.utils.data import DataLoader
@@ -9,7 +10,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 from adabound import AdaBound
 from cassava_dataset import CassavaDataset
-from utils import get_train_transforms, get_valid_transforms
+from utils import get_train_transforms, get_valid_transforms, get_tta_transforms
 from config import Configuration
 
 sys.path.append('../pytorch-image-models')
@@ -27,7 +28,7 @@ import numpy as np
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
     def __init__(self, config: Configuration, criterion, len_trainloader=0, lr=0.1,
-                 fc_nodes=0, pretrained=False, bn=True, features=False, tta=False):
+                 fc_nodes=0, pretrained=False, bn=True, features=False, tta=0):
         super().__init__()
         self.len_dataloader = len_trainloader
         self.valid_accuracy = Accuracy()
@@ -36,19 +37,22 @@ class LightningModel(LightningModule):
         self.config = config
         self.criterion = criterion
         self.lr = lr
-        if tta:
-            self.tta = tta
-            self.tta_prediction_count = self.config.tta_prediction_count
-
+        self.tta = tta
+        self.num_correct = 0
+        self.seen = 0
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
-
-        # replace classifier with a Linear in_features->n_classes layer
-        if config.model_arch == 'tf_efficientnet_b4_ns':
-            self.model.classifier = torch.nn.Linear(self.model.classifier.in_features, self.config.num_classes)
+        if config.model_arch.find('efficient') >= 0:
+            self.model.classifier = Sequential(
+                Dropout(p=0.3),
+                Linear(self.model.classifier.in_features, self.config.num_classes)
+            )
         elif config.model_arch == 'seresnet50':
-            self.model.fc = torch.nn.Linear(self.model.fc.in_features, self.config.num_classes)
-
-
+            self.model.fc = Sequential(
+                Dropout(p=0.3),
+                torch.nn.Linear(self.model.fc.in_features, self.config.num_classes)
+            )
+        else:
+            print('unsupported model architecture:', config.model_arch)
         self.freeze_layers(bn, features)
         self.save_hyperparameters()
 
@@ -63,8 +67,8 @@ class LightningModel(LightningModule):
                 for p in module.parameters():
                     p.requires_grad = False if bn else True
 
-        for name, p in self.model.named_parameters():
-            print(name, p.requires_grad)
+        # for name, p in self.model.named_parameters():
+        #     print(name, p.requires_grad)
 
     def forward(self, x):
         return self.model(x)
@@ -76,13 +80,13 @@ class LightningModel(LightningModule):
         #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
         # opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
 
-        # scheduler = OneCycleLR(opt,
-        #                        max_lr=self.lr,
-        #                        steps_per_epoch=self.len_dataloader,
-        #                        epochs=self.config.epochs * 2)
-        scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.len_dataloader,
-                                                T_mult=self.config.T_mult,
-                                                eta_min=self.config.min_lr)
+        scheduler = OneCycleLR(opt,
+                               max_lr=self.lr,
+                               steps_per_epoch=self.len_dataloader,
+                               epochs=self.config.epochs * 2)
+        # scheduler = CosineAnnealingWarmRestarts(opt, T_0=self.len_dataloader,
+        #                                         T_mult=self.config.T_mult,
+        #                                         eta_min=self.config.min_lr)
         scheduler = {"scheduler": scheduler, "interval": "step"}
 
         return [opt], [scheduler]
@@ -117,22 +121,21 @@ class LightningModel(LightningModule):
     def test_step(self, batch, batch_idx):
         images, labels = batch
         predictions = self.model(images)
-        self.log('test_acc_weighted', accuracy(predictions, labels, self.config.num_classes, class_reduction='none'),
-                 on_epoch=True)
-        return {'preds': predictions, 'target': labels}
+        most_likely = torch.argmax(predictions, dim=1)  # highest preds for each sample in batch
+        return {'preds': most_likely, 'target': labels}
 
     def test_step_end(self, outputs):
-        most_likely = torch.argmax(outputs['preds'], dim=1)  # highest preds for each sample in batch
-        self.test_predictions.extend(most_likely.cpu().numpy())
-        self.test_accuracy(most_likely, outputs['target'])
+        self.test_predictions.extend(outputs['preds'].cpu().numpy())
+        self.test_accuracy(outputs['preds'], outputs['target'])
 
     def on_test_epoch_end(self) -> None:
+        print('Test epoch ended.')
         self.log('test_acc', self.test_accuracy.compute(), prog_bar=True, logger=True)
 
 
 class LightningData(LightningDataModule):
 
-    def __init__(self, holdout_df: DataFrame, config: Configuration, folds_df: DataFrame = None, kaggle=False):
+    def __init__(self, holdout_df: DataFrame, config: Configuration, folds_df: DataFrame = None, kaggle=False, tta=0):
         super().__init__()
         self.folds_df = folds_df
         self.holdout_df = holdout_df
@@ -141,13 +144,15 @@ class LightningData(LightningDataModule):
         self.fold_range = [str(i) for i in range(self.config.fold_num)]
         self.train_transforms = get_train_transforms(self.config.img_size)
         self.valid_transforms = get_valid_transforms(self.config.img_size)
+        self.test_transforms = get_tta_transforms(self.config.img_size) if tta > 0 else self.valid_transforms
         self.kaggle = kaggle
+        self.tta = tta
 
     def setup(self, stage: Optional[str] = None):
         if stage == 'holdout' or stage == 'ensemble_holdout' or stage == 'ensemble_test':
             self.test_loader = CassavaDataset(self.holdout_df, self.config.train_img_dir,
                                               output_label=(not self.kaggle),
-                                              transform=self.valid_transforms)
+                                              transform=self.test_transforms)
         elif stage in self.fold_range:
             self.get_data_dfs_from_fold(self.folds_df, int(stage))
             self.create_weighted_sampler(self.train_df)

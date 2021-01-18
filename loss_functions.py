@@ -1,12 +1,5 @@
 import torch
 
-"""
-Ideas:
-- https://ai.googleblog.com/2019/08/bi-tempered-logistic-loss-for-training.html
-- https://github.com/mlpanda/bi-tempered-loss-pytorch/blob/master/bi_tempered_loss.py
-- https://www.kaggle.com/c/siim-isic-melanoma-classification/discussion/173733
-"""
-
 
 # https://github.com/pytorch/pytorch/issues/7455#issuecomment-513062631
 class LabelSmoothingLoss(torch.nn.Module):
@@ -108,7 +101,7 @@ def tempered_softmax(activations, t, num_iters=5):
     return exp_t(activations - normalization_constants, t)
 
 
-def bi_tempered_logistic_loss(activations, labels, t1, t2, label_smoothing=0.0, num_iters=5):
+def bi_tempered_logistic_loss(activations, labels, t1, t2, num_iters=5):
     """Bi-Tempered Logistic Loss with custom gradient.
     Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
@@ -121,9 +114,9 @@ def bi_tempered_logistic_loss(activations, labels, t1, t2, label_smoothing=0.0, 
     A loss tensor.
     """
 
-    #if label_smoothing > 0.0:
-        #num_classes = labels.shape[-1]
-        #labels = (1 - num_classes / (num_classes - 1) * label_smoothing) * labels + label_smoothing / (num_classes - 1)
+    # if label_smoothing > 0.0:
+    # num_classes = labels.shape[-1]
+    # labels = (1 - num_classes / (num_classes - 1) * label_smoothing) * labels + label_smoothing / (num_classes - 1)
 
     probabilities = tempered_softmax(activations, t2, num_iters)
 
@@ -151,9 +144,8 @@ class BiTemperedLoss(torch.nn.Module):
             weighted_labels.fill_(self.smoothing / (self.num_classes - 1))
             # randomly scatter self.confidence at indexes across first (col) dimension
             weighted_labels.scatter_(1, labels.data.unsqueeze(1), 1 - self.smoothing)
-        loss = bi_tempered_logistic_loss(pred, weighted_labels, self.t1, self.t2, label_smoothing=0.05)
+        loss = bi_tempered_logistic_loss(pred, weighted_labels, self.t1, self.t2)
         if self.reduction == 'mean':
             return torch.mean(loss, dim=self.dim)
         if self.reduction == 'sum':
             return torch.sum(loss, dim=self.dim)
-

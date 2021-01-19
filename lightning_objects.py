@@ -43,7 +43,7 @@ class LightningModel(LightningModule):
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
         if config.model_arch.find('efficient') >= 0:
             self.model.classifier = Sequential(
-                Dropout(p=0.3),
+                Dropout(p=0.25),
                 Linear(self.model.classifier.in_features, self.config.num_classes)
             )
         elif config.model_arch == 'seresnet50':
@@ -74,8 +74,8 @@ class LightningModel(LightningModule):
         return self.model(x)
 
     def configure_optimizers(self):
-        # opt = AdamW(self.parameters(), lr=self.lr)
-        opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
+        opt = AdamW(self.parameters(), lr=self.lr)
+        # opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
         # opt = Adam(self.model.parameters(), self.lr,
         #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
         # opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
@@ -93,6 +93,10 @@ class LightningModel(LightningModule):
 
     def training_step(self, batch, batch_idx):
         labels, loss, predictions = self.label_forward_pass(batch)
+        # https://stats.stackexchange.com/questions/218656/classification-with-noisy-labels
+        noise = 0.05
+        predictions = noise / self.config.num_classes + (1-noise) * predictions
+
         self.log('train_loss', loss, on_step=True, prog_bar=True, logger=True)
         return {'loss': loss, 'preds': predictions, 'target': labels}
 

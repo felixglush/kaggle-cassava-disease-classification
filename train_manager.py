@@ -61,11 +61,11 @@ class TrainManager:
 
         self.data_module = LightningData(folds_df=self.folds_df, holdout_df=self.holdout_df, config=self.config)
 
-        # self.criterion = LabelSmoothingLoss(num_classes=self.config.num_classes, smoothing=self.config.smoothing)
+        self.criterion = LabelSmoothingLoss(num_classes=self.config.num_classes, smoothing=self.config.smoothing)
         # t1=0.3, t2=1.0 large margin noise (outliers far from decision boundary)
         # t1=1.0, t2=4.0 small margin noise (outliers close to decision boundary)
-        self.criterion = BiTemperedLoss(smoothing=self.config.smoothing, t1=self.config.t1, t2=self.config.t2,
-                                        num_classes=self.config.num_classes)
+        # self.criterion = BiTemperedLoss(smoothing=self.config.smoothing, t1=self.config.t1, t2=self.config.t2,
+        #                                 num_classes=self.config.num_classes)
 
         model_args = {
             'config': self.config,
@@ -90,7 +90,8 @@ class TrainManager:
             'auto_lr_find': False if self.model_checkpoint_path or not self.config.lr_test else True,
             'benchmark': True,
             'default_root_dir': self.experiment_dir,
-            'precision': 16,
+            #'precision': 32,
+            'amp_level': 'O2',
             'gpus': 1,
             'min_epochs': self.config.epochs,
             'max_epochs': self.config.epochs * 4,
@@ -158,7 +159,8 @@ class TrainManager:
     def test(self, tta, weight_avg, mode='vote'):
         """ Loads all models and runs ensemble voting on holdout """
         self.test_data_module = LightningData(folds_df=None, holdout_df=self.holdout_df,
-                                              config=self.config, kaggle=self.kaggle, tta=tta)
+                                              config=self.config,
+                                              kaggle=self.kaggle, tta=tta)
         self.test_data_module.setup('ensemble_holdout' if not self.kaggle else 'ensemble_test')
 
         testing_model = LightningModel(config=self.config, criterion=None, tta=tta)

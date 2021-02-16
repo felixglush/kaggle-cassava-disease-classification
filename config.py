@@ -10,24 +10,25 @@ class Configuration:
         self.img_size = 512
         self.print_every = 10
 
-        self.fc_layers = [512, 256, self.num_classes]
+        self.fc_layers = [512, self.num_classes]
 
         # self.model_arch = 'tf_efficientnet_b4_ns'
-        self.model_arch = 'efficientnet_b3a'
-        # self.model_arch = 'seresnet50'
+        # self.model_arch = 'efficientnet_b3a'
+        self.model_arch = 'seresnet50'
+        # self.model_arch = 'resnet50d'
         # run settings
         self.hyperparameter_tuning = True
         self.debug = False
         self.train = True
         self.inference = True
 
-        self.train_bs = 32
+        self.train_bs = 8
         self.valid_bs = 64
         self.is_amsgrad = False
         self.grad_accumulator_steps = 4
-        # `lr`: 0.001285         # adam/adaboost
+        self.lr = 3e-4         # adam/adaboost
         self.lr_test = False
-        self.lr = 0.0275  # SGD
+        # self.lr = 0.0275  # SGD
         self.max_lr = 0.8
         self.min_lr = 1e-3
         self.weight_decay = 0.000125  # Adam

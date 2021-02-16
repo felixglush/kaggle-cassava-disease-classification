@@ -1,0 +1,9 @@
+SERESNET50_sgd_coswarm_bnf_smoothed_0.1_weighted_t1=0.8_t2=1.2_88-88/ filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/ filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/tf_efficientnet_b4_ns_bitempered_smooth=0.05_val_loss=0.041_val_acc=0.973_fold1.ckpt filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/tf_efficientnet_b4_ns_bitempered_smooth=0.05_val_loss=0.047_val_acc=0.968_fold0.ckpt filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/experiment_config.json filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/folds.csv filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/holdout.csv filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/tf_efficientnet_b4_ns_bitempered_smooth=0.05_val_loss=0.036_val_acc=0.978_fold3.ckpt filter=lfs diff=lfs merge=lfs -text
+sgd_coswarm_bnf_bitemp_smooth_weighted_t1=0.3_t2=1.0_89-6_cleaned_0.5/tf_efficientnet_b4_ns_bitempered_smooth=0.05_val_loss=0.038_val_acc=0.979_fold2.ckpt filter=lfs diff=lfs merge=lfs -text

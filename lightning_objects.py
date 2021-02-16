@@ -7,7 +7,7 @@ from torch.optim import SGD, Optimizer, Adam, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, OneCycleLR
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import WeightedRandomSampler
-
+import torch.nn.functional as F
 from adabound import AdaBound
 from cassava_dataset import CassavaDataset
 from utils import get_train_transforms, get_valid_transforms, get_tta_transforms
@@ -27,46 +27,53 @@ import numpy as np
 # EfficientNet noisy student: https://arxiv.org/pdf/1911.04252.pdf.
 # Implementation from https://github.com/rwightman/pytorch-image-models.
 class LightningModel(LightningModule):
-    def __init__(self, config: Configuration, criterion, len_trainloader=0, lr=0.1,
+    def __init__(self, config: Configuration, kaggle, criterion=None, len_trainloader=0, lr=0.1,
                  pretrained=False, bn=True, features=False, tta=0):
         super().__init__()
+        self.kaggle = kaggle
         self.len_dataloader = len_trainloader
         self.valid_accuracy = Accuracy()
         self.test_accuracy = Accuracy()
-        self.test_predictions = []
+        self.test_preds_probs = []
         self.config = config
         self.criterion = criterion
         self.lr = lr
         self.tta = tta
         self.num_correct = 0
         self.seen = 0
+
+        print(config.model_arch)
         self.model = timm.create_model(config.model_arch, pretrained=pretrained)
-        self.fc_layers = config.fc_layers
-
-        if config.model_arch.find('efficient') >= 0:
-            module_list = []
-            prev_size = self.model.classifier.in_features
-            for i, layer_size in enumerate(self.config.fc_layers):
-                if i != len(self.config.fc_layers) - 1:  # if not the output layer
-                    module_list.append(Dropout(p=0.25))
-                    module_list.append(LeakyReLU())
-                module_list.append(Linear(prev_size, layer_size))
-                prev_size = layer_size
-
-            self.model.classifier = Sequential(*module_list)
-
-        elif config.model_arch == 'seresnset50':
-            self.model.fc = Sequential(
-                Dropout(p=0.3),
-                LeakyReLU(),
-                torch.nn.Linear(self.model.fc.in_features, self.config.num_classes)
-            )
-        else:
-            print('unsupported model architecture:', config.model_arch)
+        self.gen_arch(config)
         self.freeze_layers(bn, features)
         self.save_hyperparameters()
 
-        print(self.model)
+    def gen_arch(self, config):
+        module_list = []
+        if config.model_arch.find('efficient') >= 0:
+            prev_size = self.model.classifier.in_features
+            self.generate_head(module_list, prev_size)
+            # self.model.classifier = Sequential(*module_list)
+            self.model.classifier = Linear(self.model.classifier.in_features,
+                                           5)  # TODO: TEMP
+            print(self.model.classifier)
+        elif config.model_arch in ['seresnet50', 'resnet50d']:
+            prev_size = self.model.fc.in_features
+            self.generate_head(module_list, prev_size)
+            # self.model.fc = Sequential(*module_list)
+            self.model.fc = Linear(self.model.fc.in_features,
+                                           5)  # TODO: TEMP
+            print(self.model.fc)
+        else:
+            print('unsupported model architecture:', config.model_arch)
+
+    def generate_head(self, module_list, prev_size):
+        for i, layer_size in enumerate(self.config.fc_layers):
+            if i != len(self.config.fc_layers) - 1:  # if not the output layer
+                module_list.append(Dropout(p=0.25))
+                module_list.append(LeakyReLU())
+            module_list.append(Linear(prev_size, layer_size))
+            prev_size = layer_size
 
     def freeze_layers(self, bn, features):
         for name, module in self.model.named_modules():
@@ -79,53 +86,25 @@ class LightningModel(LightningModule):
                 for p in module.parameters():
                     p.requires_grad = False if bn else True
 
-        for c in self.model.classifier.parameters():
-            c.requires_grad = True
+        if self.config.model_arch.find('efficient') >= 0:
+            for c in self.model.classifier.parameters():
+                c.requires_grad = True
+        elif self.config.model_arch in ['seresnet50', 'resnet50d']:
+            for c in self.model.fc.parameters():
+                c.requires_grad = True
 
         # for name, p in self.model.named_parameters():
         #     print(name, p.requires_grad)
 
     def forward(self, x):
         assert not np.any(np.isnan(x.detach().cpu().numpy())), 'input contains NaN'
-        m = self.model
-
-        def isanynan(x):
-            return np.any(np.isnan(x.detach().cpu().numpy()))
-
-        classifier_input = m.global_pool(m.act2(m.bn2(m.conv_head(m.blocks(m.act1(m.bn1(m.conv_stem(x))))))))
-        if isanynan(classifier_input):
-            print('CLASSIFIER INPUT WAS NAN\n', classifier_input)
-            print('classifier in min', torch.min(classifier_input))
-            print('classifier in max', torch.max(classifier_input))
-
-        fc1 = m.classifier[0](classifier_input)
-        if isanynan(fc1):
-            print('FC1 WAS NAN\n', fc1)
-            print('fc1 min', torch.min(fc1))
-            print('fc1 max', torch.max(fc1))
-
-        fc2 = m.classifier[1](fc1)
-        if isanynan(fc2):
-            print('FC2 WAS NAN\n', fc2)
-            print('fc2 min', torch.min(fc2))
-            print('fc2 max', torch.max(fc2))
-
-        out = m.classifier[2](fc2)
-        if isanynan(out):
-            print('OUT WAS NAN\n', out)
-            print('out min', torch.min(out))
-            print('out max', torch.max(out))
-
-        # dropout = m.classifier[0](classifier_input)
-        # out = m.classifier[1](dropout)
-
-        return out
+        return self.model(x)
 
     def configure_optimizers(self):
         # opt = AdamW(self.parameters(), lr=self.lr)
         opt = SGD(self.parameters(), lr=self.lr, momentum=self.config.momentum, nesterov=True)
         # opt = Adam(self.model.parameters(), self.lr,
-        #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad, eps=1e-4)
+        #            weight_decay=self.config.weight_decay, amsgrad=self.config.is_amsgrad)
         # opt = AdaBound(self.model.parameters(), self.lr, gamma=1e-2)
 
         scheduler = OneCycleLR(opt,
@@ -165,49 +144,64 @@ class LightningModel(LightningModule):
     def label_forward_pass(self, batch):
         images, labels = batch
         predictions = self(images)
-        isnan = np.isnan(predictions.detach().cpu().numpy())
 
-        if np.any(isnan):
-            nanidx = 0
-            for i, el in enumerate(isnan):
-                if np.any(el):
-                    nanidx = i
-            print('predictions contain NaN\n')
-            print('PREDICTIONS\n', predictions)
-            print('IMAGE\n', images[nanidx], torch.min(images[nanidx]), torch.max(images[nanidx]))
-            print('IMAGE prior\n', images[nanidx - 1], torch.min(images[nanidx - 1]), torch.max(images[nanidx - 1]))
-            print('WEIGHTS')
-            for name, m in self.model.classifier.named_modules():
-                print('module', name)
-                for n, p in m.named_parameters():
-                    print('param', n, p)
-
-            assert False
+        # isnan = np.isnan(predictions.detach().cpu().numpy())
+        # if np.any(isnan):
+        #     nanidx = 0
+        #     for i, el in enumerate(isnan):
+        #         if np.any(el):
+        #             nanidx = i
+        #     print('predictions contain NaN\n')
+        #     print('PREDICTIONS\n', predictions)
+        #     print('IMAGE\n', images[nanidx], torch.min(images[nanidx]), torch.max(images[nanidx]))
+        #     print('IMAGE prior\n', images[nanidx - 1], torch.min(images[nanidx - 1]), torch.max(images[nanidx - 1]))
+        #     print('WEIGHTS')
+        #     for name, m in self.model.classifier.named_modules():
+        #         print('module', name)
+        #         for n, p in m.named_parameters():
+        #             print('param', n, p)
+        #
+        #     assert False
 
         loss = self.criterion(predictions, labels)
         return labels, loss, predictions
 
     def on_test_epoch_start(self) -> None:
         self.test_accuracy.reset()
-        self.test_predictions = []
+        self.test_preds_probs = []
 
     def test_step(self, batch, batch_idx):
-        images, labels = batch
+        if not self.kaggle:
+            images, labels = batch  # not kaggle, have labels
+            most_likely_pred, most_likely_prob = self.test_pred_prob(images)
+            return {'preds': most_likely_pred, 'probs': most_likely_prob, 'targets': labels}
+        elif self.kaggle == 'kaggle':
+            images = batch
+            most_likely_pred, most_likely_prob = self.test_pred_prob(images)
+            return {'preds': most_likely_pred}
+
+    def test_pred_prob(self, images):
         predictions = self(images)
-        most_likely = torch.argmax(predictions, dim=1)  # highest preds for each sample in batch
-        return {'preds': most_likely, 'target': labels}
+        most_likely_pred = torch.argmax(predictions, dim=1).int()
+        probabilities = F.softmax(predictions, dim=1)
+        most_likely_prob = torch.max(probabilities, dim=1)
+
+        return most_likely_pred, most_likely_prob.values
 
     def test_step_end(self, outputs):
-        self.test_predictions.extend(outputs['preds'].cpu().numpy())
-        self.test_accuracy(outputs['preds'], outputs['target'])
+        # test_predictions: list[list]: [[prediction 0, probability 0], [prediction 1, probability 1], ...]
+        self.test_preds_probs.extend(list(x) for x in zip(outputs['preds'].cpu().numpy(),
+                                                          outputs['probs'].cpu().numpy()))
+        if not self.kaggle:
+            self.test_accuracy(outputs['preds'], outputs['targets'])
 
     def on_test_epoch_end(self) -> None:
         print('Test epoch ended.')
-        self.log('test_acc', self.test_accuracy.compute(), prog_bar=True, logger=True)
+        if not self.kaggle:
+            self.log('test_acc', self.test_accuracy.compute(), prog_bar=True, logger=True)
 
 
 class LightningData(LightningDataModule):
-
     def __init__(self, holdout_df: DataFrame, config: Configuration, folds_df: DataFrame = None, kaggle=False, tta=0):
         super().__init__()
         self.folds_df = folds_df
